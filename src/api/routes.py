@@ -18,6 +18,7 @@ from src.api.rate_limiter import (
 )
 from src.utils.logger import get_logger
 from src.utils.sanitization import validate_question, SanitizationError
+from src.utils.progress import get_session_progress
 from src.utils.config import get_settings
 
 logger = get_logger()
@@ -256,12 +257,17 @@ def _session_to_detailed_response(session, is_running: bool = False) -> Detailed
     if hasattr(session, 'created_at'):
         elapsed_time = (datetime.now() - session.created_at).total_seconds()
     
+    # Get real-time progress (updated by nodes immediately when they start)
+    realtime_progress = get_session_progress(session.session_id)
+    # Use real-time phase if available, otherwise fall back to state phase
+    current_phase = realtime_progress.get("current_phase") or (state.current_phase if state else None)
+    
     return DetailedSessionResponse(
         session_id=session.session_id,
         is_complete=session.is_complete,
         is_waiting_for_input=session.is_waiting_for_input,
         is_running=is_running,
-        current_phase=state.current_phase if state else None,
+        current_phase=current_phase,
         architect_proposal=architect_proposal,
         engineer_proposal=engineer_proposal,
         architect_refined_proposal=architect_refined_proposal,

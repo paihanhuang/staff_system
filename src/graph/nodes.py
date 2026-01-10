@@ -25,6 +25,7 @@ from src.prompts.auditor import AUDITOR_PROMPT, AUDITOR_SYSTEM_PROMPT
 from src.utils.logger import get_logger
 from src.utils.sanitization import sanitize_user_input
 from src.utils.metrics import UsageMetrics, get_cost_estimator
+from src.utils.progress import update_session_progress
 
 logger = get_logger()
 
@@ -66,6 +67,9 @@ async def ideation_node(state: GraphState) -> dict:
     """
     start_time = time.time()
     logger.info(f"[{state.session_id}] Starting ideation phase")
+    
+    # Update progress immediately so UI shows the phase change
+    update_session_progress(state.session_id, current_phase="ideation")
 
     # Sanitize user input
     sanitization_result = sanitize_user_input(state.user_question)
@@ -209,6 +213,7 @@ async def cross_critique_node(state: GraphState) -> dict:
     This creates richer feedback before the final audit.
     """
     logger.info(f"[{state.session_id}] Starting cross-critique phase")
+    update_session_progress(state.session_id, current_phase="cross_critique")
 
     if not state.architect_proposal or not state.engineer_proposal:
         raise ValueError("Both proposals must exist for cross-critique")
@@ -303,6 +308,7 @@ async def refinement_node(state: GraphState) -> dict:
     agent and produces an improved proposal addressing the feedback.
     """
     logger.info(f"[{state.session_id}] Starting refinement phase")
+    update_session_progress(state.session_id, current_phase="refinement")
 
     if not all([
         state.architect_proposal,
@@ -412,6 +418,7 @@ async def cross_critique_2_node(state: GraphState) -> dict:
     Similar to cross_critique_node but operates on the refined proposals.
     """
     logger.info(f"[{state.session_id}] Starting cross-critique phase 2 (on refined proposals)")
+    update_session_progress(state.session_id, current_phase="cross_critique_2")
 
     if not state.architect_refined_proposal or not state.engineer_refined_proposal:
         raise ValueError("Both refined proposals must exist for cross-critique 2")
@@ -506,6 +513,7 @@ async def audit_node(state: GraphState) -> dict:
     and the system context to make a final assessment.
     """
     logger.info(f"[{state.session_id}] Starting audit phase")
+    update_session_progress(state.session_id, current_phase="audit")
 
     # Use refined proposals if available, otherwise use original
     architect_proposal = state.architect_refined_proposal or state.architect_proposal
@@ -611,6 +619,7 @@ async def convergence_node(state: GraphState) -> dict:
     Creates the final ADR based on the audit results and proposals.
     """
     logger.info(f"[{state.session_id}] Starting convergence phase")
+    update_session_progress(state.session_id, current_phase="convergence")
 
     if not all([state.architect_proposal, state.engineer_proposal, state.audit_result]):
         raise ValueError("Proposals and audit result must exist for convergence")
