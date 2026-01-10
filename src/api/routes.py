@@ -119,9 +119,17 @@ class DetailedSessionResponse(BaseModel):
     architect_proposal: Optional[AgentProposalSummary] = None
     engineer_proposal: Optional[AgentProposalSummary] = None
     
-    # Critique summaries
+    # Refined proposals
+    architect_refined_proposal: Optional[AgentProposalSummary] = None
+    engineer_refined_proposal: Optional[AgentProposalSummary] = None
+    
+    # Critique summaries (round 1)
     architect_critique_summary: Optional[str] = None
     engineer_critique_summary: Optional[str] = None
+    
+    # Critique summaries (round 2)
+    architect_critique_2_summary: Optional[str] = None
+    engineer_critique_2_summary: Optional[str] = None
     
     # Audit info
     audit_preferred: Optional[str] = None
@@ -194,7 +202,29 @@ def _session_to_detailed_response(session, is_running: bool = False) -> Detailed
             approach=ep.approach,
         )
     
-    # Extract critique summaries
+    # Extract refined architect proposal summary
+    architect_refined_proposal = None
+    if state and state.architect_refined_proposal:
+        arp = state.architect_refined_proposal
+        architect_refined_proposal = AgentProposalSummary(
+            title=arp.title,
+            summary=arp.summary,
+            confidence=arp.confidence,
+            approach=arp.approach,
+        )
+    
+    # Extract refined engineer proposal summary
+    engineer_refined_proposal = None
+    if state and state.engineer_refined_proposal:
+        erp = state.engineer_refined_proposal
+        engineer_refined_proposal = AgentProposalSummary(
+            title=erp.title,
+            summary=erp.summary,
+            confidence=erp.confidence,
+            approach=erp.approach,
+        )
+    
+    # Extract critique summaries (round 1)
     architect_critique_summary = None
     engineer_critique_summary = None
     if state and state.architect_critique:
@@ -203,6 +233,16 @@ def _session_to_detailed_response(session, is_running: bool = False) -> Detailed
     if state and state.engineer_critique:
         ec = state.engineer_critique
         engineer_critique_summary = f"Agreement: {ec.agreement_level:.0%}. Concerns: {', '.join(ec.concerns[:2]) if ec.concerns else 'None'}"
+    
+    # Extract critique summaries (round 2)
+    architect_critique_2_summary = None
+    engineer_critique_2_summary = None
+    if state and state.architect_critique_2:
+        ac2 = state.architect_critique_2
+        architect_critique_2_summary = f"Agreement: {ac2.agreement_level:.0%}. Concerns: {', '.join(ac2.concerns[:2]) if ac2.concerns else 'None'}"
+    if state and state.engineer_critique_2:
+        ec2 = state.engineer_critique_2
+        engineer_critique_2_summary = f"Agreement: {ec2.agreement_level:.0%}. Concerns: {', '.join(ec2.concerns[:2]) if ec2.concerns else 'None'}"
     
     # Extract audit info
     audit_preferred = None
@@ -224,8 +264,12 @@ def _session_to_detailed_response(session, is_running: bool = False) -> Detailed
         current_phase=state.current_phase if state else None,
         architect_proposal=architect_proposal,
         engineer_proposal=engineer_proposal,
+        architect_refined_proposal=architect_refined_proposal,
+        engineer_refined_proposal=engineer_refined_proposal,
         architect_critique_summary=architect_critique_summary,
         engineer_critique_summary=engineer_critique_summary,
+        architect_critique_2_summary=architect_critique_2_summary,
+        engineer_critique_2_summary=engineer_critique_2_summary,
         audit_preferred=audit_preferred,
         audit_consensus_possible=audit_consensus_possible,
 

@@ -7,7 +7,7 @@ from typing import Optional
 
 # Configuration
 API_BASE_URL = "http://localhost:8000"
-POLL_INTERVAL = 3  # seconds
+POLL_INTERVAL = 1  # seconds - fast polling for real-time updates
 
 # Page configuration
 st.set_page_config(
@@ -204,15 +204,21 @@ def render_phase_timeline(current_phase: str):
     """Render a visual phase timeline."""
     phases = [
         ("Ideation", ["start", "ideation"]),
-        ("Cross-Critique", ["ideation_complete", "cross_critique"]),
-        ("Audit", ["cross_critique_complete", "audit"]),
-        ("Convergence", ["audit_complete", "convergence"]),
-        ("Complete", ["complete"]),
+        ("Critique 1", ["ideation_complete", "cross_critique"]),
+        ("Refinement", ["cross_critique_complete", "refinement"]),
+        ("Critique 2", ["refinement_complete", "cross_critique_2"]),
+        ("Audit", ["cross_critique_2_complete", "audit"]),
+        ("Complete", ["audit_complete", "convergence", "complete", "escalated"]),
     ]
     
-    phase_order = ["start", "ideation", "ideation_complete", "cross_critique", 
-                   "cross_critique_complete", "audit", "audit_complete", 
-                   "convergence", "complete"]
+    phase_order = [
+        "start", "ideation", "ideation_complete", 
+        "cross_critique", "cross_critique_complete",
+        "refinement", "refinement_complete",
+        "cross_critique_2", "cross_critique_2_complete",
+        "audit", "audit_complete", 
+        "convergence", "complete", "escalated"
+    ]
     
     current_idx = phase_order.index(current_phase) if current_phase in phase_order else 0
     
@@ -344,9 +350,9 @@ def render_progress(status: dict):
             "#764ba2"
         )
     
-    # Critiques - show full content
+    # Critiques Phase 1 - show full content
     if status.get("architect_critique_summary") or status.get("engineer_critique_summary"):
-        st.markdown("### 🔄 Cross-Critique")
+        st.markdown("### 🔄 Cross-Critique (Round 1)")
         col1, col2 = st.columns(2)
         with col1:
             if status.get("architect_critique_summary"):
@@ -362,6 +368,46 @@ def render_progress(status: dict):
                     st.markdown(critique_text)
             else:
                 st.info("⚙️ Engineer's critique pending...")
+    
+    # Refined Proposals
+    if status.get("architect_refined_proposal") or status.get("engineer_refined_proposal"):
+        st.markdown("### ✨ Refined Proposals")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            render_agent_proposal(
+                "The Architect (Refined)", 
+                status.get("architect_refined_proposal"),
+                "🏗️",
+                "#667eea"
+            )
+        
+        with col2:
+            render_agent_proposal(
+                "The Engineer (Refined)",
+                status.get("engineer_refined_proposal"),
+                "⚙️",
+                "#764ba2"
+            )
+    
+    # Critiques Phase 2
+    if status.get("architect_critique_2_summary") or status.get("engineer_critique_2_summary"):
+        st.markdown("### 🔄 Cross-Critique (Round 2)")
+        col1, col2 = st.columns(2)
+        with col1:
+            if status.get("architect_critique_2_summary"):
+                critique_text = status['architect_critique_2_summary']
+                with st.expander("🏗️ **Architect's critique of refined Engineer**", expanded=True):
+                    st.markdown(critique_text)
+            else:
+                st.info("🏗️ Architect's second critique pending...")
+        with col2:
+            if status.get("engineer_critique_2_summary"):
+                critique_text = status['engineer_critique_2_summary']
+                with st.expander("⚙️ **Engineer's critique of refined Architect**", expanded=True):
+                    st.markdown(critique_text)
+            else:
+                st.info("⚙️ Engineer's second critique pending...")
     
     # Audit
     if status.get("audit_preferred"):
@@ -652,7 +698,7 @@ def main():
                         st.rerun()
                 
                 with col2:
-                    auto = st.checkbox("Auto-refresh every 3 seconds", value=st.session_state.auto_refresh)
+                    auto = st.checkbox("Auto-refresh every second", value=st.session_state.auto_refresh)
                     st.session_state.auto_refresh = auto
                 
                 # Auto-refresh logic

@@ -35,8 +35,32 @@ def route_after_ideation(state: GraphState) -> Literal["cross_critique", "clarif
     return "cross_critique"
 
 
-def route_after_cross_critique(state: GraphState) -> Literal["audit", "clarification"]:
+def route_after_cross_critique(state: GraphState) -> Literal["refinement"]:
     """Route after cross-critique phase.
+
+    Args:
+        state: Current graph state.
+
+    Returns:
+        Next node to execute (now goes to refinement).
+    """
+    return "refinement"
+
+
+def route_after_refinement(state: GraphState) -> Literal["cross_critique_2"]:
+    """Route after refinement phase.
+
+    Args:
+        state: Current graph state.
+
+    Returns:
+        Next node to execute.
+    """
+    return "cross_critique_2"
+
+
+def route_after_cross_critique_2(state: GraphState) -> Literal["audit"]:
+    """Route after cross-critique 2 phase.
 
     Args:
         state: Current graph state.
@@ -49,7 +73,7 @@ def route_after_cross_critique(state: GraphState) -> Literal["audit", "clarifica
 
 def route_after_audit(
     state: GraphState,
-) -> Literal["convergence", "clarification", "escalate", "ideation"]:
+) -> Literal["convergence", "escalate", "ideation"]:
     """Route after audit phase.
 
     Args:
@@ -58,10 +82,6 @@ def route_after_audit(
     Returns:
         Next node to execute.
     """
-    # Check for interrupts first - DISABLING
-    # if state.interrupt:
-    #    return "clarification"
-
     # Check if consensus is reached
     if state.consensus_reached:
         return "convergence"
@@ -72,7 +92,6 @@ def route_after_audit(
 
     # Otherwise, go back for another round
     return "ideation"
-
 
 
 

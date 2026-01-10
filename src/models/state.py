@@ -129,6 +129,22 @@ class GraphState(BaseModel):
         default=None, description="Engineer's critique of Architect's proposal"
     )
 
+    # Refined proposals from refinement phase
+    architect_refined_proposal: Optional[ArchitectureProposal] = Field(
+        default=None, description="Architect's refined proposal after addressing critique"
+    )
+    engineer_refined_proposal: Optional[ArchitectureProposal] = Field(
+        default=None, description="Engineer's refined proposal after addressing critique"
+    )
+
+    # Second round critiques after refinement
+    architect_critique_2: Optional[Critique] = Field(
+        default=None, description="Architect's critique of Engineer's refined proposal"
+    )
+    engineer_critique_2: Optional[Critique] = Field(
+        default=None, description="Engineer's critique of Architect's refined proposal"
+    )
+
     # Audit from auditor phase
     audit_result: Optional[AuditResult] = Field(
         default=None, description="Audit result from The Auditor (Gemini)"

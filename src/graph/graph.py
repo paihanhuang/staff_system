@@ -9,12 +9,16 @@ from src.models import GraphState, SystemContext
 from src.graph.nodes import (
     ideation_node,
     cross_critique_node,
+    refinement_node,
+    cross_critique_2_node,
     audit_node,
     convergence_node,
 )
 from src.graph.edges import (
     route_after_ideation,
     route_after_cross_critique,
+    route_after_refinement,
+    route_after_cross_critique_2,
     route_after_audit,
 )
 from src.utils.logger import get_logger
@@ -29,19 +33,23 @@ async def escalate_node(state: GraphState) -> dict:
     """
     logger.info(f"[{state.session_id}] Escalating to user - no consensus after {state.round_number} rounds")
 
+    # Use refined proposals if available, otherwise use original proposals
+    architect_proposal = state.architect_refined_proposal or state.architect_proposal
+    engineer_proposal = state.engineer_refined_proposal or state.engineer_proposal
+
     # Build escalation message
     escalation_message = f"""
 The Synapse Council could not reach consensus after {state.round_number} rounds of deliberation.
 
 ## Proposal A: The Architect
-**{state.architect_proposal.title}**
-{state.architect_proposal.summary}
-Confidence: {state.architect_proposal.confidence:.0%}
+**{architect_proposal.title}**
+{architect_proposal.summary}
+Confidence: {architect_proposal.confidence:.0%}
 
 ## Proposal B: The Engineer
-**{state.engineer_proposal.title}**
-{state.engineer_proposal.summary}
-Confidence: {state.engineer_proposal.confidence:.0%}
+**{engineer_proposal.title}**
+{engineer_proposal.summary}
+Confidence: {engineer_proposal.confidence:.0%}
 
 ## Auditor's Assessment
 Preferred approach: {state.audit_result.preferred_approach}
@@ -63,9 +71,10 @@ def create_graph() -> StateGraph:
     The workflow is:
     1. START -> ideation (parallel proposals from Architect and Engineer)
     2. ideation -> cross_critique (agents critique each other)
-    3. cross_critique -> audit (Auditor evaluates both)
-    4. audit -> convergence (if consensus) | escalate (if max rounds) | ideation (retry)
-    5. Any node -> clarification (if interrupt) -> resume
+    3. cross_critique -> refinement (agents improve based on critique)
+    4. refinement -> cross_critique_2 (critique refined proposals)
+    5. cross_critique_2 -> audit (Auditor evaluates refined proposals)
+    6. audit -> convergence (if consensus) | escalate (if max rounds) | ideation (retry)
 
     Returns:
         Compiled StateGraph ready for execution.
@@ -76,9 +85,10 @@ def create_graph() -> StateGraph:
     # Add all nodes
     workflow.add_node("ideation", ideation_node)
     workflow.add_node("cross_critique", cross_critique_node)
+    workflow.add_node("refinement", refinement_node)
+    workflow.add_node("cross_critique_2", cross_critique_2_node)
     workflow.add_node("audit", audit_node)
     workflow.add_node("convergence", convergence_node)
-
     workflow.add_node("escalate", escalate_node)
 
     # Set entry point
@@ -98,6 +108,22 @@ def create_graph() -> StateGraph:
         "cross_critique",
         route_after_cross_critique,
         {
+            "refinement": "refinement",
+        },
+    )
+
+    workflow.add_conditional_edges(
+        "refinement",
+        route_after_refinement,
+        {
+            "cross_critique_2": "cross_critique_2",
+        },
+    )
+
+    workflow.add_conditional_edges(
+        "cross_critique_2",
+        route_after_cross_critique_2,
+        {
             "audit": "audit",
         },
     )
@@ -112,13 +138,12 @@ def create_graph() -> StateGraph:
         },
     )
 
-
-
     # Terminal nodes
     workflow.add_edge("convergence", END)
     workflow.add_edge("escalate", END)
 
     return workflow.compile()
+
 
 
 async def run_graph(

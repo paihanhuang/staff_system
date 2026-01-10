@@ -296,13 +296,13 @@ async def cross_critique_node(state: GraphState) -> dict:
     }
 
 
-async def audit_node(state: GraphState) -> dict:
-    """Node 2: Audit - The Auditor evaluates both proposals with full context.
+async def refinement_node(state: GraphState) -> dict:
+    """Node 2: Refinement - Agents improve their proposals based on critique.
 
-    Gemini receives both proposals, the cross-critiques, and the system context
-    to make a final assessment and determine if consensus is possible.
+    Each agent receives their original proposal plus the critique from the other
+    agent and produces an improved proposal addressing the feedback.
     """
-    logger.info(f"[{state.session_id}] Starting audit phase")
+    logger.info(f"[{state.session_id}] Starting refinement phase")
 
     if not all([
         state.architect_proposal,
@@ -310,6 +310,212 @@ async def audit_node(state: GraphState) -> dict:
         state.architect_critique,
         state.engineer_critique,
     ]):
+        raise ValueError("All proposals and critiques must exist for refinement")
+
+    # Import refinement prompts
+    from src.prompts.refinement import ARCHITECT_REFINEMENT_PROMPT, ENGINEER_REFINEMENT_PROMPT
+
+    # Prepare context
+    context_str = (
+        state.system_context.to_prompt_string()
+        if state.system_context
+        else "No additional context provided."
+    )
+
+    # Initialize adapters with optional model overrides from state
+    architect_adapter = ArchitectAdapter(model_override=state.architect_model)
+    engineer_adapter = EngineerAdapter(model_override=state.engineer_model)
+
+    # Architect refines based on Engineer's critique
+    architect_refinement_prompt = ARCHITECT_REFINEMENT_PROMPT.format(
+        user_question=state.user_question,
+        system_context=context_str,
+        my_title=state.architect_proposal.title,
+        my_summary=state.architect_proposal.summary,
+        my_approach=state.architect_proposal.approach,
+        my_components=_format_components(state.architect_proposal.components),
+        my_trade_offs=_format_trade_offs(state.architect_proposal.trade_offs),
+        my_risks=_format_risks(state.architect_proposal.risks),
+        critique_agreement=state.engineer_critique.agreement_level,
+        critique_strengths=", ".join(state.engineer_critique.strengths[:3]),
+        critique_weaknesses=", ".join(state.engineer_critique.weaknesses[:3]),
+        critique_concerns=", ".join(state.engineer_critique.concerns[:3]),
+        critique_suggestions=", ".join(state.engineer_critique.suggestions[:3]),
+    )
+
+    # Engineer refines based on Architect's critique
+    engineer_refinement_prompt = ENGINEER_REFINEMENT_PROMPT.format(
+        user_question=state.user_question,
+        system_context=context_str,
+        my_title=state.engineer_proposal.title,
+        my_summary=state.engineer_proposal.summary,
+        my_approach=state.engineer_proposal.approach,
+        my_components=_format_components(state.engineer_proposal.components),
+        my_trade_offs=_format_trade_offs(state.engineer_proposal.trade_offs),
+        my_risks=_format_risks(state.engineer_proposal.risks),
+        critique_agreement=state.architect_critique.agreement_level,
+        critique_strengths=", ".join(state.architect_critique.strengths[:3]),
+        critique_weaknesses=", ".join(state.architect_critique.weaknesses[:3]),
+        critique_concerns=", ".join(state.architect_critique.concerns[:3]),
+        critique_suggestions=", ".join(state.architect_critique.suggestions[:3]),
+    )
+
+    # Run both refinements in parallel
+    architect_task = architect_adapter.generate_structured(
+        prompt=architect_refinement_prompt,
+        response_model=ArchitectureProposal,
+        system_prompt=ARCHITECT_SYSTEM_PROMPT,
+        temperature=0.5,
+    )
+    engineer_task = engineer_adapter.generate_structured(
+        prompt=engineer_refinement_prompt,
+        response_model=ArchitectureProposal,
+        system_prompt=ENGINEER_SYSTEM_PROMPT,
+        temperature=0.5,
+    )
+
+    architect_refined, engineer_refined = await asyncio.gather(
+        architect_task, engineer_task
+    )
+
+    logger.info(
+        f"[{state.session_id}] Refinement complete - "
+        f"Architect refined: {architect_refined.title}, "
+        f"Engineer refined: {engineer_refined.title}"
+    )
+
+    # Create messages for history
+    messages = [
+        Message(
+            role=MessageRole.ARCHITECT,
+            content=f"Refined Proposal: {architect_refined.title}\n{architect_refined.summary}",
+            metadata={"confidence": architect_refined.confidence, "phase": "refinement"},
+        ),
+        Message(
+            role=MessageRole.ENGINEER,
+            content=f"Refined Proposal: {engineer_refined.title}\n{engineer_refined.summary}",
+            metadata={"confidence": engineer_refined.confidence, "phase": "refinement"},
+        ),
+    ]
+
+    return {
+        "architect_refined_proposal": architect_refined,
+        "engineer_refined_proposal": engineer_refined,
+        "current_phase": "refinement_complete",
+        "conversation_history": messages,
+    }
+
+
+async def cross_critique_2_node(state: GraphState) -> dict:
+    """Node 2.5: Cross-Critique 2 - Agents critique each other's refined proposals.
+
+    Similar to cross_critique_node but operates on the refined proposals.
+    """
+    logger.info(f"[{state.session_id}] Starting cross-critique phase 2 (on refined proposals)")
+
+    if not state.architect_refined_proposal or not state.engineer_refined_proposal:
+        raise ValueError("Both refined proposals must exist for cross-critique 2")
+
+    # Prepare context
+    context_str = (
+        state.system_context.to_prompt_string()
+        if state.system_context
+        else "No additional context provided."
+    )
+
+    # Initialize adapters with optional model overrides from state
+    architect_adapter = ArchitectAdapter(model_override=state.architect_model)
+    engineer_adapter = EngineerAdapter(model_override=state.engineer_model)
+
+    # Architect critiques Engineer's refined proposal
+    architect_critique_prompt = ARCHITECT_CRITIQUE_PROMPT.format(
+        user_question=state.user_question,
+        system_context=context_str,
+        engineer_title=state.engineer_refined_proposal.title,
+        engineer_summary=state.engineer_refined_proposal.summary,
+        engineer_approach=state.engineer_refined_proposal.approach,
+        engineer_components=_format_components(state.engineer_refined_proposal.components),
+        engineer_trade_offs=_format_trade_offs(state.engineer_refined_proposal.trade_offs),
+        engineer_risks=_format_risks(state.engineer_refined_proposal.risks),
+        engineer_diagram=state.engineer_refined_proposal.mermaid_diagram or "Not provided",
+    )
+
+    # Engineer critiques Architect's refined proposal
+    engineer_critique_prompt = ENGINEER_CRITIQUE_PROMPT.format(
+        user_question=state.user_question,
+        system_context=context_str,
+        architect_title=state.architect_refined_proposal.title,
+        architect_summary=state.architect_refined_proposal.summary,
+        architect_approach=state.architect_refined_proposal.approach,
+        architect_components=_format_components(state.architect_refined_proposal.components),
+        architect_trade_offs=_format_trade_offs(state.architect_refined_proposal.trade_offs),
+        architect_risks=_format_risks(state.architect_refined_proposal.risks),
+        architect_diagram=state.architect_refined_proposal.mermaid_diagram or "Not provided",
+    )
+
+    # Run both critiques in parallel
+    architect_critique_task = architect_adapter.generate_structured(
+        prompt=architect_critique_prompt,
+        response_model=Critique,
+        system_prompt=ARCHITECT_SYSTEM_PROMPT,
+        temperature=0.5,
+    )
+    engineer_critique_task = engineer_adapter.generate_structured(
+        prompt=engineer_critique_prompt,
+        response_model=Critique,
+        system_prompt=ENGINEER_SYSTEM_PROMPT,
+        temperature=0.5,
+    )
+
+    architect_critique_2, engineer_critique_2 = await asyncio.gather(
+        architect_critique_task, engineer_critique_task
+    )
+
+    logger.info(
+        f"[{state.session_id}] Cross-critique 2 complete - "
+        f"Architect agreement: {architect_critique_2.agreement_level:.0%}, "
+        f"Engineer agreement: {engineer_critique_2.agreement_level:.0%}"
+    )
+
+    # Create messages for history
+    messages = [
+        Message(
+            role=MessageRole.ARCHITECT,
+            content=f"Critique 2 of Engineer's refined proposal: {', '.join(architect_critique_2.concerns[:3])}",
+            metadata={"agreement_level": architect_critique_2.agreement_level, "phase": "cross_critique_2"},
+        ),
+        Message(
+            role=MessageRole.ENGINEER,
+            content=f"Critique 2 of Architect's refined proposal: {', '.join(engineer_critique_2.concerns[:3])}",
+            metadata={"agreement_level": engineer_critique_2.agreement_level, "phase": "cross_critique_2"},
+        ),
+    ]
+
+    return {
+        "architect_critique_2": architect_critique_2,
+        "engineer_critique_2": engineer_critique_2,
+        "current_phase": "cross_critique_2_complete",
+        "conversation_history": messages,
+    }
+
+
+async def audit_node(state: GraphState) -> dict:
+    """Node 3: Audit - The Auditor evaluates proposals with full context.
+
+    Gemini receives proposals (refined if available), the cross-critiques, 
+    and the system context to make a final assessment.
+    """
+    logger.info(f"[{state.session_id}] Starting audit phase")
+
+    # Use refined proposals if available, otherwise use original
+    architect_proposal = state.architect_refined_proposal or state.architect_proposal
+    engineer_proposal = state.engineer_refined_proposal or state.engineer_proposal
+    
+    # Use second-round critiques if available, otherwise use first-round
+    architect_critique = state.architect_critique_2 or state.architect_critique
+    engineer_critique = state.engineer_critique_2 or state.engineer_critique
+
+    if not all([architect_proposal, engineer_proposal, architect_critique, engineer_critique]):
         raise ValueError("All proposals and critiques must exist for audit")
 
     # Prepare context
@@ -325,36 +531,36 @@ async def audit_node(state: GraphState) -> dict:
 
     # Format critique summaries
     architect_critique_str = (
-        f"Strengths: {', '.join(state.architect_critique.strengths[:3])}\n"
-        f"Weaknesses: {', '.join(state.architect_critique.weaknesses[:3])}\n"
-        f"Concerns: {', '.join(state.architect_critique.concerns[:3])}\n"
-        f"Agreement level: {state.architect_critique.agreement_level:.0%}"
+        f"Strengths: {', '.join(architect_critique.strengths[:3])}\n"
+        f"Weaknesses: {', '.join(architect_critique.weaknesses[:3])}\n"
+        f"Concerns: {', '.join(architect_critique.concerns[:3])}\n"
+        f"Agreement level: {architect_critique.agreement_level:.0%}"
     )
     engineer_critique_str = (
-        f"Strengths: {', '.join(state.engineer_critique.strengths[:3])}\n"
-        f"Weaknesses: {', '.join(state.engineer_critique.weaknesses[:3])}\n"
-        f"Concerns: {', '.join(state.engineer_critique.concerns[:3])}\n"
-        f"Agreement level: {state.engineer_critique.agreement_level:.0%}"
+        f"Strengths: {', '.join(engineer_critique.strengths[:3])}\n"
+        f"Weaknesses: {', '.join(engineer_critique.weaknesses[:3])}\n"
+        f"Concerns: {', '.join(engineer_critique.concerns[:3])}\n"
+        f"Agreement level: {engineer_critique.agreement_level:.0%}"
     )
 
     # Prepare audit prompt
     audit_prompt = AUDITOR_PROMPT.format(
         user_question=state.user_question,
         system_context=context_str,
-        architect_title=state.architect_proposal.title,
-        architect_summary=state.architect_proposal.summary,
-        architect_approach=state.architect_proposal.approach,
-        architect_confidence=f"{state.architect_proposal.confidence:.0%}",
-        architect_components=_format_components(state.architect_proposal.components),
-        architect_trade_offs=_format_trade_offs(state.architect_proposal.trade_offs),
-        architect_risks=_format_risks(state.architect_proposal.risks),
-        engineer_title=state.engineer_proposal.title,
-        engineer_summary=state.engineer_proposal.summary,
-        engineer_approach=state.engineer_proposal.approach,
-        engineer_confidence=f"{state.engineer_proposal.confidence:.0%}",
-        engineer_components=_format_components(state.engineer_proposal.components),
-        engineer_trade_offs=_format_trade_offs(state.engineer_proposal.trade_offs),
-        engineer_risks=_format_risks(state.engineer_proposal.risks),
+        architect_title=architect_proposal.title,
+        architect_summary=architect_proposal.summary,
+        architect_approach=architect_proposal.approach,
+        architect_confidence=f"{architect_proposal.confidence:.0%}",
+        architect_components=_format_components(architect_proposal.components),
+        architect_trade_offs=_format_trade_offs(architect_proposal.trade_offs),
+        architect_risks=_format_risks(architect_proposal.risks),
+        engineer_title=engineer_proposal.title,
+        engineer_summary=engineer_proposal.summary,
+        engineer_approach=engineer_proposal.approach,
+        engineer_confidence=f"{engineer_proposal.confidence:.0%}",
+        engineer_components=_format_components(engineer_proposal.components),
+        engineer_trade_offs=_format_trade_offs(engineer_proposal.trade_offs),
+        engineer_risks=_format_risks(engineer_proposal.risks),
         architect_critique=architect_critique_str,
         engineer_critique=engineer_critique_str,
     )
