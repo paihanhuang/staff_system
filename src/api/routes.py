@@ -57,10 +57,27 @@ class DesignRequest(BaseModel):
     session_id: Optional[str] = Field(default=None, description="Optional session ID")
 
 
-class ClarificationResponse(BaseModel):
-    """Response to a clarification request."""
+class LogResponse(BaseModel):
+    """Response containing server logs."""
+    logs: list[str] = Field(..., description="List of log lines")
 
-    response: str = Field(..., description="The user's response")
+
+@router.get("/logs", response_model=LogResponse)
+async def get_logs(lines: int = 100):
+    """Get the latest server logs."""
+    try:
+        # Read from backend.log
+        with open("backend.log", "r") as f:
+            # Efficiently read last N lines using tail-like logic or just readlines for simplicity
+            # For simplicity with small logs, readlines is fine. For huge logs, seek would be better.
+            all_lines = f.readlines()
+            return LogResponse(logs=all_lines[-lines:])
+    except FileNotFoundError:
+        return LogResponse(logs=["Log file not found."])
+    except Exception as e:
+        logger.error(f"Error reading logs: {e}")
+        return LogResponse(logs=[f"Error reading logs: {str(e)}"])
+
 
 
 class SessionResponse(BaseModel):

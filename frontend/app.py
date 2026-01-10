@@ -554,6 +554,9 @@ def main():
             st.session_state.auto_refresh = False
             st.rerun()
 
+    # System Console
+    render_system_console()
+
     # Footer
     st.markdown("---")
     st.markdown(
@@ -566,6 +569,22 @@ def main():
         """,
         unsafe_allow_html=True,
     )
+
+
+def render_system_console():
+    """Render the system console with backend logs."""
+    with st.expander("🖥️ System Console (Backend Logs)", expanded=False):
+        # Add a manual refresh button for logs inside the expander
+        if st.button("Refresh Logs", key="refresh_logs"):
+            pass  # Clicking this will rerun the script and fetch new logs
+            
+        logs_data = make_request("GET", "/api/logs?lines=50")
+        if logs_data and "logs" in logs_data:
+            # Join logs and display
+            log_text = "".join(logs_data["logs"])
+            st.code(log_text, language="text", line_numbers=True)
+        else:
+            st.info("No logs available.")
 
 
 if __name__ == "__main__":
