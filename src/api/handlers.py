@@ -6,7 +6,6 @@ from typing import Optional
 from uuid import uuid4
 
 from src.models import GraphState, SystemContext
-from src.graph.graph import run_graph_with_interrupt, resume_graph
 from src.utils.logger import SessionLogger, get_logger
 
 logger = get_logger()
@@ -131,64 +130,30 @@ class SessionManager:
 
         session.logger.log_event("session_started", message=session.question[:100])
 
-        state, is_complete = await run_graph_with_interrupt(
+        # Initialize state to show we are starting
+        initial_state = GraphState(
+            session_id=session_id,
+            user_question=session.question,
+            system_context=session.system_context,
+            current_phase="start",
+        )
+        session.update_state(initial_state)
+
+        # Run the graph directly (no interrupts)
+        from src.graph.graph import run_graph
+        final_state = await run_graph(
             question=session.question,
             system_context=session.system_context,
             session_id=session_id,
         )
 
-        session.update_state(state)
-        session.is_complete = is_complete
+        session.update_state(final_state)
+        session.is_complete = True # Always completes in one go now
 
-        if state.interrupt:
-            session.logger.log_interrupt(
-                agent=state.interrupt.source,
-                interrupt_type=state.interrupt.type.value,
-                question=state.interrupt.question,
-            )
-
-        return session
-
-    async def resume_session(self, session_id: str, user_response: str) -> Session:
-        """Resume a paused session with user input.
-
-        Args:
-            session_id: The session ID.
-            user_response: The user's response.
-
-        Returns:
-            Updated session.
-
-        Raises:
-            ValueError: If session not found or not waiting for input.
-        """
-        session = await self.get_session(session_id)
-        if not session:
-            raise ValueError(f"Session {session_id} not found")
-
-        if not session.is_waiting_for_input:
-            raise ValueError(f"Session {session_id} is not waiting for input")
-
-        session.logger.log_user_response(user_response)
-
-        state, is_complete = await resume_graph(
-            state=session.state,
-            user_response=user_response,
-        )
-
-        session.update_state(state)
-        session.is_complete = is_complete
-
-        if state.interrupt:
-            session.logger.log_interrupt(
-                agent=state.interrupt.source,
-                interrupt_type=state.interrupt.type.value,
-                question=state.interrupt.question,
-            )
-        elif is_complete:
-            session.logger.log_consensus(
-                reached=state.consensus_reached,
-                rounds=state.round_number,
+        if final_state.consensus_reached:
+             session.logger.log_consensus(
+                reached=True,
+                rounds=final_state.round_number,
             )
 
         return session

@@ -107,9 +107,9 @@ class DetailedSessionResponse(BaseModel):
     audit_preferred: Optional[str] = None
     audit_consensus_possible: Optional[bool] = None
     
-    # Interrupt info
-    interrupt_question: Optional[str] = None
-    interrupt_source: Optional[str] = None
+    # Interrupt info - Removed
+    # interrupt_question: Optional[str] = None
+    # interrupt_source: Optional[str] = None
     
     # Final result
     final_decision: Optional[str] = None
@@ -208,8 +208,7 @@ def _session_to_detailed_response(session, is_running: bool = False) -> Detailed
         engineer_critique_summary=engineer_critique_summary,
         audit_preferred=audit_preferred,
         audit_consensus_possible=audit_consensus_possible,
-        interrupt_question=state.interrupt.question if state and state.interrupt else None,
-        interrupt_source=state.interrupt.source if state and state.interrupt else None,
+
         final_decision=state.final_adr.title if state and state.final_adr else None,
         consensus_level=state.final_adr.consensus_level if state and state.final_adr else None,
         error=state.error if state else None,
@@ -353,27 +352,6 @@ async def get_session_detailed(session_id: str) -> DetailedSessionResponse:
     return _session_to_detailed_response(session, is_running=is_running)
 
 
-@router.post("/design/{session_id}/respond", response_model=SessionResponse)
-async def respond_to_clarification(
-    session_id: str, response: ClarificationResponse
-) -> SessionResponse:
-    """Respond to a clarification request.
-
-    Provides user input to a paused session and continues execution.
-    """
-    try:
-        session = await session_manager.resume_session(
-            session_id=session_id,
-            user_response=response.response,
-        )
-
-        return _session_to_response(session)
-
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logger.error(f"Error responding to clarification: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/design/{session_id}", response_model=SessionResponse)
@@ -509,32 +487,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
                         "event": "phase_complete",
                         "session_id": session_id,
                         "is_complete": session.is_complete,
-                        "is_waiting_for_input": session.is_waiting_for_input,
+                        "is_waiting_for_input": False,
                         "current_phase": session.state.current_phase if session.state else None,
-                        "interrupt": session.state.interrupt.model_dump() if session.state and session.state.interrupt else None,
-                    })
-
-                except Exception as e:
-                    await websocket.send_json({"error": str(e)})
-
-            elif action == "respond":
-                # Respond to clarification
-                response = data.get("response")
-                if not response:
-                    await websocket.send_json({"error": "Response is required"})
-                    continue
-
-                try:
-                    session = await session_manager.resume_session(session_id, response)
-
-                    await websocket.send_json({
-                        "event": "phase_complete",
-                        "session_id": session_id,
-                        "is_complete": session.is_complete,
-                        "is_waiting_for_input": session.is_waiting_for_input,
-                        "current_phase": session.state.current_phase if session.state else None,
-                        "interrupt": session.state.interrupt.model_dump() if session.state and session.state.interrupt else None,
-                        "final_adr": session.state.final_adr.model_dump() if session.state and session.state.final_adr else None,
+                        "interrupt": None,
                     })
 
                 except Exception as e:

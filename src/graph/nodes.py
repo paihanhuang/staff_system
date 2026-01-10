@@ -1,7 +1,7 @@
 """Node implementations for the LangGraph state machine."""
 
 import asyncio
-import re
+import asyncio
 import time
 from datetime import datetime
 from typing import Optional
@@ -15,8 +15,6 @@ from src.models import (
     AuditResult,
     Critique,
     GraphState,
-    Interrupt,
-    InterruptType,
     Message,
     MessageRole,
     SystemContext,
@@ -29,21 +27,6 @@ from src.utils.sanitization import sanitize_user_input
 from src.utils.metrics import UsageMetrics, get_cost_estimator
 
 logger = get_logger()
-
-# Pattern for detecting clarification requests
-CLARIFICATION_PATTERN = re.compile(r"<<CLARIFICATION_NEEDED:\s*(.+?)>>", re.DOTALL)
-
-
-def _check_for_interrupt(proposal: ArchitectureProposal, source: str) -> Optional[Interrupt]:
-    """Check if a proposal contains a clarification request."""
-    if proposal.clarification_needed:
-        return Interrupt(
-            type=InterruptType.CLARIFICATION_NEEDED,
-            source=source,
-            question=proposal.clarification_needed,
-        )
-    return None
-
 
 def _format_components(components: list) -> str:
     """Format components list for prompts."""
@@ -499,47 +482,4 @@ async def convergence_node(state: GraphState) -> dict:
     }
 
 
-async def clarification_node(state: GraphState) -> dict:
-    """Node 3: Clarification Loop - Handle user clarification responses.
 
-    Processes the user's response to an interrupt and prepares to resume.
-    If no user_response is provided yet, this indicates we're pausing for input.
-    """
-    logger.info(f"[{state.session_id}] Processing clarification")
-
-    # If no user response yet, we're pausing to wait for input
-    if not state.user_response:
-        logger.info(f"[{state.session_id}] Waiting for user clarification response")
-        # Return current state without changes - graph will pause here
-        return {
-            "current_phase": "waiting_for_clarification",
-        }
-
-    # Add user response to context if system_context exists
-    additional_context = f"\n\nUser clarification: {state.user_response}"
-
-    if state.system_context:
-        current_additional = state.system_context.additional_context or ""
-        state.system_context.additional_context = current_additional + additional_context
-    else:
-        state.system_context = SystemContext(additional_context=additional_context.strip())
-
-    # Create message for history
-    messages = [
-        Message(
-            role=MessageRole.USER,
-            content=state.user_response,
-        ),
-    ]
-
-    # Determine where to resume based on what phase we were in
-    resume_phase = "ideation" if state.current_phase in ["start", "ideation_complete"] else "audit"
-
-    logger.info(f"[{state.session_id}] Clarification processed, resuming at {resume_phase}")
-
-    return {
-        "interrupt": None,
-        "user_response": None,
-        "current_phase": resume_phase,
-        "conversation_history": messages,
-    }

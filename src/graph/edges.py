@@ -74,35 +74,7 @@ def route_after_audit(
     return "ideation"
 
 
-def route_after_clarification(
-    state: GraphState,
-) -> Literal["ideation", "cross_critique", "audit", "end"]:
-    """Route after clarification is received.
 
-    Args:
-        state: Current graph state.
-
-    Returns:
-        Next node to execute based on where we left off.
-    """
-    phase = state.current_phase
-    print(f"DEBUG: route_after_clarification phase={phase}")
-
-    # If still waiting for clarification, end the graph to wait for user input
-    if phase == "waiting_for_clarification":
-        return "end"
-
-    # Determine where to resume based on what was completed
-    if phase in ["start", "ideation"]:
-        return "ideation"
-    elif phase == "ideation_complete":
-        print("DEBUG: route_after_clarification -> cross_critique")
-        return "cross_critique"
-    elif phase == "cross_critique_complete":
-        return "audit"
-    else:
-        # Default to ideation for a fresh start
-        return "ideation"
 
 
 def should_continue(state: GraphState) -> bool:

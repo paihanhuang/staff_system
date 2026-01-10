@@ -11,13 +11,11 @@ from src.graph.nodes import (
     cross_critique_node,
     audit_node,
     convergence_node,
-    clarification_node,
 )
 from src.graph.edges import (
     route_after_ideation,
     route_after_cross_critique,
     route_after_audit,
-    route_after_clarification,
 )
 from src.utils.logger import get_logger
 
@@ -80,7 +78,7 @@ def create_graph() -> StateGraph:
     workflow.add_node("cross_critique", cross_critique_node)
     workflow.add_node("audit", audit_node)
     workflow.add_node("convergence", convergence_node)
-    workflow.add_node("clarification", clarification_node)
+
     workflow.add_node("escalate", escalate_node)
 
     # Set entry point
@@ -92,7 +90,6 @@ def create_graph() -> StateGraph:
         route_after_ideation,
         {
             "cross_critique": "cross_critique",
-            "clarification": "clarification",
             "end": END,
         },
     )
@@ -102,7 +99,6 @@ def create_graph() -> StateGraph:
         route_after_cross_critique,
         {
             "audit": "audit",
-            "clarification": "clarification",
         },
     )
 
@@ -111,22 +107,12 @@ def create_graph() -> StateGraph:
         route_after_audit,
         {
             "convergence": "convergence",
-            "clarification": "clarification",
             "escalate": "escalate",
             "ideation": "ideation",
         },
     )
 
-    workflow.add_conditional_edges(
-        "clarification",
-        route_after_clarification,
-        {
-            "ideation": "ideation",
-            "cross_critique": "cross_critique",
-            "audit": "audit",
-            "end": END,
-        },
-    )
+
 
     # Terminal nodes
     workflow.add_edge("convergence", END)
@@ -167,122 +153,26 @@ async def run_graph(
 
     # Create and run the graph
     graph = create_graph()
-    final_state = await graph.ainvoke(initial_state)
+    final_state_dict = await graph.ainvoke(initial_state)
+    
+    # Convert dict back to Pydantic model
+    # We need to merge with initial state request data as langgraph might only return changed keys depending on configuration, 
+    # though usually it returns full state for StateGraph(PydanticModel).
+    # Being safe and ensuring valid model instantiation.
+    state_data = {
+        "session_id": session_id,
+        "user_question": question,
+        "system_context": system_context,
+        "max_rounds": max_rounds,
+    }
+    state_data.update(final_state_dict)
+    
+    final_state = GraphState(**state_data)
 
-    logger.info(f"[{session_id}] Synapse Council complete - phase: {final_state.get('current_phase')}")
+    logger.info(f"[{session_id}] Synapse Council complete - phase: {final_state.current_phase}")
 
     return final_state
 
 
-async def run_graph_with_interrupt(
-    question: str,
-    system_context: Optional[SystemContext] = None,
-    session_id: Optional[str] = None,
-    max_rounds: int = 3,
-) -> tuple[GraphState, bool]:
-    """Run the graph with interrupt support.
 
-    This version yields when an interrupt is encountered, allowing
-    the caller to provide user input before continuing.
-
-    Args:
-        question: The user's system design question.
-        system_context: Optional context about the system.
-        session_id: Optional session ID.
-        max_rounds: Maximum rounds before escalation.
-
-    Returns:
-        Tuple of (current state, is_complete).
-    """
-    session_id = session_id or str(uuid.uuid4())[:8]
-
-    initial_state = GraphState(
-        session_id=session_id,
-        user_question=question,
-        system_context=system_context,
-        max_rounds=max_rounds,
-        current_phase="start",
-    )
-
-    graph = create_graph()
-
-    # Use ainvoke to get the complete final state
-    try:
-        final_state_dict = await graph.ainvoke(initial_state)
-        
-        # Create GraphState from the result, merging with initial state for required fields
-        state_data = {
-            "session_id": session_id,
-            "user_question": question,
-            "system_context": system_context,
-            "max_rounds": max_rounds,
-        }
-        state_data.update(final_state_dict)
-        
-        final_state = GraphState(**state_data)
-        
-        # Check if waiting for clarification
-        if final_state.interrupt or final_state.current_phase == "waiting_for_clarification":
-            return final_state, False
-        
-        # Check if complete
-        is_complete = final_state.final_adr is not None or final_state.error is not None
-        return final_state, is_complete
-        
-    except Exception as e:
-        # Return error state
-        error_state = GraphState(
-            session_id=session_id,
-            user_question=question,
-            system_context=system_context,
-            max_rounds=max_rounds,
-            current_phase="error",
-            error=str(e),
-        )
-        return error_state, True
-
-
-
-async def resume_graph(
-    state: GraphState,
-    user_response: str,
-) -> tuple[GraphState, bool]:
-    """Resume a paused graph with user input.
-
-    Args:
-        state: The paused state.
-        user_response: The user's response to the interrupt.
-
-    Returns:
-        Tuple of (new state, is_complete).
-    """
-    # Update state with user response
-    state.user_response = user_response
-    state.interrupt = None
-    state.current_phase = "resuming"
-
-    graph = create_graph()
-
-    try:
-        # Use ainvoke for complete state handling
-        final_state_dict = await graph.ainvoke(state.model_dump())
-        
-        # Merge with original state for required fields
-        state_data = state.model_dump()
-        state_data.update(final_state_dict)
-        
-        final_state = GraphState(**state_data)
-        
-        # Check if waiting for another clarification
-        if final_state.interrupt or final_state.current_phase == "waiting_for_clarification":
-            return final_state, False
-        
-        is_complete = final_state.final_adr is not None or final_state.error is not None
-        return final_state, is_complete
-        
-    except Exception as e:
-        logger.error(f"Error resuming graph: {e}", exc_info=True)
-        state.error = str(e)
-        state.current_phase = "error"
-        return state, True
 
