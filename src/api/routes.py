@@ -83,6 +83,19 @@ async def get_logs(lines: int = 100):
         return LogResponse(logs=[f"Error reading logs: {str(e)}"])
 
 
+@router.post("/logs/clear")
+async def clear_logs():
+    """Clear the server logs."""
+    try:
+        with open("backend.log", "w") as f:
+            f.write("")
+        logger.info("Logs cleared - new session started")
+        return {"status": "cleared"}
+    except Exception as e:
+        logger.error(f"Error clearing logs: {e}")
+        return {"status": "error", "message": str(e)}
+
+
 
 class SessionResponse(BaseModel):
     """Response with session information."""
