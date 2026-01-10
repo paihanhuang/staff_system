@@ -510,7 +510,7 @@ def main():
 
     # Model options for each agent
     OPENAI_MODELS = ["o3", "o3-mini", "o1", "gpt-4o", "gpt-4o-mini", "gpt-4-turbo"]
-    ANTHROPIC_MODELS = ["claude-sonnet-4-20250514"]  # Only this model is confirmed working
+    ANTHROPIC_MODELS = ["claude-opus-4-20250514", "claude-sonnet-4-20250514"]  # Opus 4 for best reasoning
     GOOGLE_MODELS = ["gemini-2.5-pro", "gemini-2.0-flash", "gemini-1.5-flash"]
 
     # Initialize model selections in session state

@@ -62,14 +62,20 @@ class OpenAIAdapter(BaseAdapter):
 
     def _get_client(self, model: str, temperature: float, max_tokens: int) -> ChatOpenAI:
         """Get or create a ChatOpenAI client for a model."""
-        key = f"{model}_{temperature}_{max_tokens}"
+        # o3/o1 reasoning models don't support temperature parameter
+        is_reasoning_model = model.startswith("o3") or model.startswith("o1")
+        effective_temp = None if is_reasoning_model else temperature
+        
+        key = f"{model}_{effective_temp}_{max_tokens}"
         if key not in self._clients:
-            self._clients[key] = ChatOpenAI(
-                model=model,
-                api_key=self.api_key,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
+            client_kwargs = {
+                "model": model,
+                "api_key": self.api_key,
+                "max_tokens": max_tokens,
+            }
+            if not is_reasoning_model:
+                client_kwargs["temperature"] = temperature
+            self._clients[key] = ChatOpenAI(**client_kwargs)
         return self._clients[key]
 
     def _extract_usage(self, response, model: str) -> TokenUsage:
