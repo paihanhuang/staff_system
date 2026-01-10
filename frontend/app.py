@@ -100,6 +100,8 @@ def init_session_state():
         st.session_state.result = None
     if "auto_refresh" not in st.session_state:
         st.session_state.auto_refresh = False
+    if "question" not in st.session_state:
+        st.session_state.question = None
 
 
 def make_request(method: str, endpoint: str, data: Optional[dict] = None, timeout: int = 120) -> dict:
@@ -443,6 +445,40 @@ def main():
         unsafe_allow_html=True,
     )
 
+    # Component Descriptions
+    with st.expander("ℹ️ About the Council", expanded=True):
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown("### 🏗️ The Architect")
+            st.markdown("**Model:** GPT-4o")
+            st.markdown("Focuses on high-level system design, patterns, and trade-offs.")
+        with col2:
+            st.markdown("### ⚙️ The Engineer")
+            st.markdown("**Model:** Claude Opus 4")
+            st.markdown("Focuses on implementation details, technologies, and reliability.")
+        with col3:
+            st.markdown("### 🔍 The Auditor")
+            st.markdown("**Model:** Gemini 2.0 Flash")
+            st.markdown("Evaluates both proposals for security, scalability, and consensus.")
+    
+    # System Console - Always render at the bottom of main (ensure not inside if/else)
+    # Note: It was already called at line 558, which is technically correct. 
+    # The issue might be that `st.rerun()` calls inside the if/else blocks (lines 482, 520, 532, 546, 555)
+    # stop execution before reaching line 558.
+    # To fix this, we need to place the console logic in the sidebar or use a container that persists, 
+    # OR ensure that reruns happen AFTER rendering the footer/console if possible (Streamlit reruns immediately stop script).
+    # Since we can't easily change the return flow of reruns, we should put the console in the sidebar 
+    # OR render it *before* the conditional logic if we want it to be persistent during updates?
+    # No, usually you want it at the bottom.
+    # A better approach for Streamlit is to use a container at the bottom, or just accept that auto-refresh 
+    # might skip rendering the bottom if it triggers a rerun early.
+    # BUT wait, the loop at 540 sleeps then reruns. This means line 558 IS skipped during auto-refresh loops.
+    # FIX: Move render_system_console() call inside the auto-refresh loop logic specifically, 
+    # OR better yet, move it to the sidebar so it's always rendered.
+    # Let's try rendering it in the sidebar for persistence, or fix the control flow.
+    # User asked for "on top" descriptions, but "console in browser".
+    # I will keep console at bottom but make sure it is rendered BEFORE any `st.rerun()` calls.
+
     # Sidebar
     context = render_sidebar()
 
@@ -478,6 +514,7 @@ def main():
                     if not result.get("error"):
                         st.session_state.session_id = result.get("session_id")
                         st.session_state.status = result
+                        st.session_state.question = question  # Persist question
                         st.session_state.auto_refresh = True
                         st.rerun()
                     else:
@@ -485,6 +522,11 @@ def main():
 
     else:
         # Active session - show progress
+        
+        # Display the persistent question
+        if st.session_state.question:
+            st.info(f"🎯 **Design Goal:** {st.session_state.question}")
+        
         status = st.session_state.status
         
         if status:
@@ -537,25 +579,31 @@ def main():
                 
                 # Auto-refresh logic
                 if st.session_state.auto_refresh:
-                    time.sleep(POLL_INTERVAL)
-                    status = make_request(
-                        "GET",
-                        f"/api/design/{st.session_state.session_id}/detailed",
-                    )
+                    # Update status before sleeping/rerunning
+                    status = make_request("GET", f"/api/design/{st.session_state.session_id}/detailed")
                     st.session_state.status = status
+                    
+                    # Render console before sleep/rerun so it's visible during the wait
+                    render_system_console()
+                    
+                    time.sleep(POLL_INTERVAL)
                     st.rerun()
-        
+
         # Stop session button
         st.markdown("---")
-        if st.button("⏹️ Cancel and Start Over"):
-            st.session_state.session_id = None
-            st.session_state.status = None
-            st.session_state.result = None
-            st.session_state.auto_refresh = False
-            st.rerun()
-
-    # System Console
-    render_system_console()
+        col_cancel, col_console = st.columns([1, 2])
+        with col_cancel:
+            if st.button("⏹️ Cancel and Start Over"):
+                st.session_state.session_id = None
+                st.session_state.status = None
+                st.session_state.result = None
+                st.session_state.auto_refresh = False
+                st.rerun()
+    
+    # Render console if not already rendered by auto-refresh logic
+    # (i.e., when stopped, complete, or waiting for input)
+    if not st.session_state.auto_refresh:
+        render_system_console()
 
     # Footer
     st.markdown("---")
@@ -578,11 +626,34 @@ def render_system_console():
         if st.button("Refresh Logs", key="refresh_logs"):
             pass  # Clicking this will rerun the script and fetch new logs
             
-        logs_data = make_request("GET", "/api/logs?lines=50")
+        logs_data = make_request("GET", "/api/logs?lines=500")
         if logs_data and "logs" in logs_data:
-            # Join logs and display
+            # Join logs and display in a scrollable div that auto-scrolls to bottom
             log_text = "".join(logs_data["logs"])
-            st.code(log_text, language="text", line_numbers=True)
+            # Escape HTML special characters
+            import html
+            escaped_logs = html.escape(log_text)
+            
+            # Custom HTML with auto-scroll to bottom
+            console_html = f"""
+            <div id="log-console" style="
+                background-color: #1e1e1e;
+                color: #d4d4d4;
+                font-family: 'Consolas', 'Monaco', monospace;
+                font-size: 12px;
+                padding: 10px;
+                border-radius: 5px;
+                height: 400px;
+                overflow-y: auto;
+                white-space: pre-wrap;
+                word-wrap: break-word;
+            ">{escaped_logs}</div>
+            <script>
+                var logConsole = document.getElementById('log-console');
+                logConsole.scrollTop = logConsole.scrollHeight;
+            </script>
+            """
+            st.components.v1.html(console_html, height=420, scrolling=False)
         else:
             st.info("No logs available.")
 
