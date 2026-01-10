@@ -205,15 +205,20 @@ class GoogleAdapter(BaseAdapter):
 class AuditorAdapter(GoogleAdapter):
     """Adapter specifically for The Auditor (Gemini 3 Pro)."""
 
-    def __init__(self, api_key: Optional[str] = None):
-        """Initialize the Auditor adapter."""
+    def __init__(self, api_key: Optional[str] = None, model_override: Optional[str] = None):
+        """Initialize the Auditor adapter.
+        
+        Args:
+            api_key: Optional API key override.
+            model_override: Optional model name override (takes precedence over config).
+        """
         settings = get_settings()
         fallbacks = [
             m.strip() for m in settings.auditor_fallback_models.split(",")
             if m.strip()
         ]
         super().__init__(
-            model_name=settings.auditor_model,
+            model_name=model_override or settings.auditor_model,
             api_key=api_key,
             fallback_models=fallbacks,
         )

@@ -203,15 +203,20 @@ class AnthropicAdapter(BaseAdapter):
 class EngineerAdapter(AnthropicAdapter):
     """Adapter specifically for The Engineer (Claude 4.5 Sonnet)."""
 
-    def __init__(self, api_key: Optional[str] = None):
-        """Initialize the Engineer adapter."""
+    def __init__(self, api_key: Optional[str] = None, model_override: Optional[str] = None):
+        """Initialize the Engineer adapter.
+        
+        Args:
+            api_key: Optional API key override.
+            model_override: Optional model name override (takes precedence over config).
+        """
         settings = get_settings()
         fallbacks = [
             m.strip() for m in settings.engineer_fallback_models.split(",")
             if m.strip()
         ]
         super().__init__(
-            model_name=settings.engineer_model,
+            model_name=model_override or settings.engineer_model,
             api_key=api_key,
             fallback_models=fallbacks,
         )

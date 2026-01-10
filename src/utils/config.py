@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     supervisor_model: str = "gpt-4o"
     architect_model: str = "gpt-4o"
     engineer_model: str = "claude-sonnet-4-20250514"
-    auditor_model: str = "gemini-2.0-flash"
+    auditor_model: str = "gemini-2.5-pro"
 
     # Application Settings
     max_rounds: int = 3
@@ -53,8 +53,8 @@ class Settings(BaseSettings):
 
     # Fallback Models (comma-separated fallback chains)
     architect_fallback_models: str = "gpt-4o-mini,gpt-4-turbo"
-    engineer_fallback_models: str = "claude-sonnet-4-20250514,claude-3-5-sonnet-20241022"
-    auditor_fallback_models: str = "gemini-1.5-pro,gemini-1.5-flash"
+    engineer_fallback_models: str = "claude-sonnet-4-20250514"  # Only this model is confirmed working
+    auditor_fallback_models: str = "gemini-2.0-flash,gemini-1.5-flash"
 
     def validate_api_keys(self) -> dict[str, bool]:
         """Check which API keys are configured."""

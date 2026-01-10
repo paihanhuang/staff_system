@@ -83,9 +83,9 @@ async def ideation_node(state: GraphState) -> dict:
         else "No additional context provided."
     )
 
-    # Initialize adapters
-    architect_adapter = ArchitectAdapter()
-    engineer_adapter = EngineerAdapter()
+    # Initialize adapters with optional model overrides from state
+    architect_adapter = ArchitectAdapter(model_override=state.architect_model)
+    engineer_adapter = EngineerAdapter(model_override=state.engineer_model)
 
     # Prepare prompts with sanitized input
     architect_prompt = ARCHITECT_IDEATION_PROMPT.format(
@@ -220,9 +220,9 @@ async def cross_critique_node(state: GraphState) -> dict:
         else "No additional context provided."
     )
 
-    # Initialize adapters
-    architect_adapter = ArchitectAdapter()
-    engineer_adapter = EngineerAdapter()
+    # Initialize adapters with optional model overrides from state
+    architect_adapter = ArchitectAdapter(model_override=state.architect_model)
+    engineer_adapter = EngineerAdapter(model_override=state.engineer_model)
 
     # Architect critiques Engineer's proposal
     architect_critique_prompt = ARCHITECT_CRITIQUE_PROMPT.format(
@@ -320,7 +320,8 @@ async def audit_node(state: GraphState) -> dict:
     )
 
     # Initialize auditor
-    auditor_adapter = AuditorAdapter()
+    # Initialize adapter with optional model override from state
+    auditor_adapter = AuditorAdapter(model_override=state.auditor_model)
 
     # Format critique summaries
     architect_critique_str = (

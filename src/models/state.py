@@ -139,6 +139,11 @@ class GraphState(BaseModel):
     round_number: int = Field(default=0, description="Current round number")
     max_rounds: int = Field(default=3, description="Maximum rounds before escalation")
 
+    # Model overrides (user-selectable)
+    architect_model: Optional[str] = Field(default=None, description="Override model for Architect")
+    engineer_model: Optional[str] = Field(default=None, description="Override model for Engineer")
+    auditor_model: Optional[str] = Field(default=None, description="Override model for Auditor")
+
     # Interrupt handling
     interrupt: Optional[Interrupt] = Field(
         default=None, description="Current interrupt waiting for user input"

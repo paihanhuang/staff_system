@@ -251,9 +251,47 @@ def render_agent_proposal(title: str, proposal: dict, icon: str, color: str):
         # Summary
         st.markdown(f"**Summary:** {proposal.get('summary', 'N/A')}")
         
-        # Approach
-        if proposal.get('approach'):
-            st.markdown(f"**Approach:** {proposal.get('approach')[:500]}...")
+        # Full Approach (always show complete)
+        approach = proposal.get('approach', '')
+        if approach:
+            st.markdown(f"**Approach:**")
+            st.markdown(approach)
+        
+        # Components (always expanded)
+        components = proposal.get('components', [])
+        if components:
+            st.markdown(f"**🧩 Components ({len(components)}):**")
+            for c in components:
+                if isinstance(c, dict):
+                    st.markdown(f"- **{c.get('name', 'N/A')}** ({c.get('type', 'N/A')}): {c.get('technology', 'N/A')} - {c.get('description', 'N/A')}")
+                else:
+                    st.markdown(f"- {c}")
+        
+        # Trade-offs (always expanded)
+        trade_offs = proposal.get('trade_offs', [])
+        if trade_offs:
+            st.markdown(f"**⚖️ Trade-offs ({len(trade_offs)}):**")
+            for t in trade_offs:
+                if isinstance(t, dict):
+                    st.markdown(f"- **{t.get('aspect', 'N/A')}**: {t.get('choice', 'N/A')} ({t.get('rationale', 'N/A')})")
+                else:
+                    st.markdown(f"- {t}")
+        
+        # Risks (if available)
+        risks = proposal.get('risks', [])
+        if risks:
+            st.markdown(f"**⚠️ Risks ({len(risks)}):**")
+            for r in risks:
+                if isinstance(r, dict):
+                    st.markdown(f"- [{r.get('severity', 'N/A').upper()}] {r.get('category', 'N/A')}: {r.get('description', 'N/A')} - Mitigation: {r.get('mitigation', 'N/A')}")
+                else:
+                    st.markdown(f"- {r}")
+        
+        # Diagram (if available)
+        diagram = proposal.get('mermaid_diagram', '')
+        if diagram:
+            st.markdown("**📊 Architecture Diagram:**")
+            st.code(diagram, language="mermaid")
 
 
 def render_progress(status: dict):
@@ -306,16 +344,24 @@ def render_progress(status: dict):
             "#764ba2"
         )
     
-    # Critiques
+    # Critiques - show full content
     if status.get("architect_critique_summary") or status.get("engineer_critique_summary"):
         st.markdown("### 🔄 Cross-Critique")
         col1, col2 = st.columns(2)
         with col1:
             if status.get("architect_critique_summary"):
-                st.info(f"**Architect's critique:** {status['architect_critique_summary']}")
+                critique_text = status['architect_critique_summary']
+                with st.expander("🏗️ **Architect's critique of Engineer**", expanded=True):
+                    st.markdown(critique_text)
+            else:
+                st.info("🏗️ Architect's critique pending...")
         with col2:
             if status.get("engineer_critique_summary"):
-                st.info(f"**Engineer's critique:** {status['engineer_critique_summary']}")
+                critique_text = status['engineer_critique_summary']
+                with st.expander("⚙️ **Engineer's critique of Architect**", expanded=True):
+                    st.markdown(critique_text)
+            else:
+                st.info("⚙️ Engineer's critique pending...")
     
     # Audit
     if status.get("audit_preferred"):
@@ -392,44 +438,61 @@ def render_result(result: dict):
         st.markdown("### 💡 Rationale")
         st.markdown(adr.get("rationale", ""))
 
-        # Majority Opinion Details
+        # Final Proposal - Combined best approach with full details
+        st.markdown("### 🎯 Final Proposal")
+        
+        # Get majority opinion for detailed display
         majority = adr.get("majority_opinion", {})
-        if majority:
-            st.markdown("### ✅ Majority Opinion")
-            with st.expander(majority.get("title", "Proposal"), expanded=True):
-                st.markdown(majority.get("summary", ""))
-
-                if majority.get("components"):
-                    st.markdown("**Components:**")
-                    for c in majority["components"]:
-                        st.markdown(f"- **{c.get('name')}** ({c.get('type')}): {c.get('technology')} - {c.get('description')}")
-
-                if majority.get("trade_offs"):
-                    st.markdown("**Trade-offs:**")
-                    for t in majority["trade_offs"]:
-                        st.markdown(f"- **{t.get('aspect')}**: {t.get('choice')} ({t.get('rationale')})")
+        
+        # Show the full approach/decision
+        final_approach = adr.get("final_approach") or majority.get("approach") or adr.get("decision", "")
+        if final_approach:
+            st.markdown("**Recommended Approach:**")
+            st.markdown(final_approach)
+        
+        # Show complete components from majority
+        if majority.get("components"):
+            st.markdown(f"**🧩 Components ({len(majority['components'])}):**")
+            for c in majority["components"]:
+                st.markdown(f"- **{c.get('name', 'N/A')}** ({c.get('type', 'N/A')}): {c.get('technology', 'N/A')} - {c.get('description', 'N/A')}")
+        
+        # Show trade-offs from majority
+        if majority.get("trade_offs"):
+            st.markdown(f"**⚖️ Trade-offs ({len(majority['trade_offs'])}):**")
+            for t in majority["trade_offs"]:
+                st.markdown(f"- **{t.get('aspect', 'N/A')}**: {t.get('choice', 'N/A')} ({t.get('rationale', 'N/A')})")
+        
+        # Implementation recommendations
+        impl_recommendations = adr.get("implementation_recommendations", [])
+        if impl_recommendations:
+            st.markdown(f"**📝 Implementation Recommendations ({len(impl_recommendations)}):**")
+            for rec in impl_recommendations:
+                st.markdown(f"- {rec}")
+        
+        # Diagram in Final Proposal
+        diagram = majority.get("mermaid_diagram") or adr.get("mermaid_diagram")
+        if diagram:
+            st.markdown("**📊 Architecture Diagram:**")
+            st.code(diagram, language="mermaid")
+        
+        # Risks in Final Proposal
+        majority_risks = majority.get("risks", [])
+        adr_risks = adr.get("risks", [])
+        all_risks = majority_risks if majority_risks else adr_risks
+        if all_risks:
+            st.markdown(f"**⚠️ Identified Risks ({len(all_risks)}):**")
+            for risk in all_risks:
+                if isinstance(risk, dict):
+                    st.markdown(f"- [{risk.get('severity', 'N/A').upper()}] {risk.get('category', 'N/A')}: {risk.get('description', 'N/A')} - Mitigation: {risk.get('mitigation', 'N/A')}")
+                else:
+                    st.markdown(f"- {risk}")
 
         # Minority Report
         minority = adr.get("minority_report")
         if minority:
             st.markdown("### 📝 Minority Report")
-            with st.expander("View dissenting opinion"):
+            with st.expander("View dissenting opinion", expanded=False):
                 st.markdown(minority)
-
-        # Diagram
-        diagram = adr.get("mermaid_diagram")
-        if diagram:
-            st.markdown("### 📊 Architecture Diagram")
-            st.markdown('<div class="mermaid-container">', unsafe_allow_html=True)
-            st.code(diagram, language="mermaid")
-            st.markdown('</div>', unsafe_allow_html=True)
-
-        # Risks
-        risks = adr.get("risks", [])
-        if risks:
-            st.markdown("### ⚠️ Identified Risks")
-            for risk in risks:
-                st.markdown(f"- {risk}")
 
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -445,39 +508,49 @@ def main():
         unsafe_allow_html=True,
     )
 
-    # Component Descriptions
-    with st.expander("ℹ️ About the Council", expanded=True):
+    # Model options for each agent
+    OPENAI_MODELS = ["o3", "o3-mini", "o1", "gpt-4o", "gpt-4o-mini", "gpt-4-turbo"]
+    ANTHROPIC_MODELS = ["claude-sonnet-4-20250514"]  # Only this model is confirmed working
+    GOOGLE_MODELS = ["gemini-2.5-pro", "gemini-2.0-flash", "gemini-1.5-flash"]
+
+    # Initialize model selections in session state
+    if "architect_model" not in st.session_state:
+        st.session_state.architect_model = "gpt-4o"
+    if "engineer_model" not in st.session_state:
+        st.session_state.engineer_model = "claude-sonnet-4-20250514"
+    if "auditor_model" not in st.session_state:
+        st.session_state.auditor_model = "gemini-2.5-pro"
+
+    # Component Descriptions with Model Selection
+    with st.expander("ℹ️ Configure the Council", expanded=True):
         col1, col2, col3 = st.columns(3)
         with col1:
             st.markdown("### 🏗️ The Architect")
-            st.markdown("**Model:** GPT-4o")
             st.markdown("Focuses on high-level system design, patterns, and trade-offs.")
+            st.session_state.architect_model = st.selectbox(
+                "Architect Model",
+                options=OPENAI_MODELS,
+                index=OPENAI_MODELS.index(st.session_state.architect_model) if st.session_state.architect_model in OPENAI_MODELS else 0,
+                key="architect_model_select"
+            )
         with col2:
             st.markdown("### ⚙️ The Engineer")
-            st.markdown("**Model:** Claude Opus 4")
             st.markdown("Focuses on implementation details, technologies, and reliability.")
+            st.session_state.engineer_model = st.selectbox(
+                "Engineer Model",
+                options=ANTHROPIC_MODELS,
+                index=ANTHROPIC_MODELS.index(st.session_state.engineer_model) if st.session_state.engineer_model in ANTHROPIC_MODELS else 0,
+                key="engineer_model_select"
+            )
         with col3:
             st.markdown("### 🔍 The Auditor")
-            st.markdown("**Model:** Gemini 2.0 Flash")
             st.markdown("Evaluates both proposals for security, scalability, and consensus.")
-    
-    # System Console - Always render at the bottom of main (ensure not inside if/else)
-    # Note: It was already called at line 558, which is technically correct. 
-    # The issue might be that `st.rerun()` calls inside the if/else blocks (lines 482, 520, 532, 546, 555)
-    # stop execution before reaching line 558.
-    # To fix this, we need to place the console logic in the sidebar or use a container that persists, 
-    # OR ensure that reruns happen AFTER rendering the footer/console if possible (Streamlit reruns immediately stop script).
-    # Since we can't easily change the return flow of reruns, we should put the console in the sidebar 
-    # OR render it *before* the conditional logic if we want it to be persistent during updates?
-    # No, usually you want it at the bottom.
-    # A better approach for Streamlit is to use a container at the bottom, or just accept that auto-refresh 
-    # might skip rendering the bottom if it triggers a rerun early.
-    # BUT wait, the loop at 540 sleeps then reruns. This means line 558 IS skipped during auto-refresh loops.
-    # FIX: Move render_system_console() call inside the auto-refresh loop logic specifically, 
-    # OR better yet, move it to the sidebar so it's always rendered.
-    # Let's try rendering it in the sidebar for persistence, or fix the control flow.
-    # User asked for "on top" descriptions, but "console in browser".
-    # I will keep console at bottom but make sure it is rendered BEFORE any `st.rerun()` calls.
+            st.session_state.auditor_model = st.selectbox(
+                "Auditor Model",
+                options=GOOGLE_MODELS,
+                index=GOOGLE_MODELS.index(st.session_state.auditor_model) if st.session_state.auditor_model in GOOGLE_MODELS else 0,
+                key="auditor_model_select"
+            )
 
     # Sidebar
     context = render_sidebar()
@@ -505,7 +578,12 @@ def main():
             else:
                 with st.spinner("Starting design review..."):
                     # Use the async start endpoint
-                    request_data = {"question": question}
+                    request_data = {
+                        "question": question,
+                        "architect_model": st.session_state.architect_model,
+                        "engineer_model": st.session_state.engineer_model,
+                        "auditor_model": st.session_state.auditor_model,
+                    }
                     if context:
                         request_data["system_context"] = context
 
@@ -612,7 +690,7 @@ def main():
         <div style="text-align: center; color: #666; font-size: 0.9rem;">
             Powered by <strong>GPT-4o</strong> (Architect) •
             <strong>Claude Opus 4</strong> (Engineer) •
-            <strong>Gemini 2.0 Flash</strong> (Auditor)
+            <strong>Gemini 2.5 Pro</strong> (Auditor)
         </div>
         """,
         unsafe_allow_html=True,
@@ -621,7 +699,7 @@ def main():
 
 def render_system_console():
     """Render the system console with backend logs."""
-    with st.expander("🖥️ System Console (Backend Logs)", expanded=False):
+    with st.expander("🖥️ System Console (Backend Logs)", expanded=True):
         # Add a manual refresh button for logs inside the expander
         if st.button("Refresh Logs", key="refresh_logs"):
             pass  # Clicking this will rerun the script and fetch new logs

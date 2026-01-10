@@ -55,6 +55,9 @@ class DesignRequest(BaseModel):
         default=None, description="Optional system context"
     )
     session_id: Optional[str] = Field(default=None, description="Optional session ID")
+    architect_model: Optional[str] = Field(default=None, description="Override architect model")
+    engineer_model: Optional[str] = Field(default=None, description="Override engineer model")
+    auditor_model: Optional[str] = Field(default=None, description="Override auditor model")
 
 
 class LogResponse(BaseModel):
@@ -346,6 +349,9 @@ async def start_design_async(
             question=request.question,
             system_context=request.system_context,
             session_id=request.session_id,
+            architect_model=request.architect_model,
+            engineer_model=request.engineer_model,
+            auditor_model=request.auditor_model,
         )
 
         # Start background task

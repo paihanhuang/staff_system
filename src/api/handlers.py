@@ -19,6 +19,9 @@ class Session:
         session_id: str,
         question: str,
         system_context: Optional[SystemContext] = None,
+        architect_model: Optional[str] = None,
+        engineer_model: Optional[str] = None,
+        auditor_model: Optional[str] = None,
     ):
         """Initialize a session.
 
@@ -26,10 +29,16 @@ class Session:
             session_id: Unique session identifier.
             question: The user's system design question.
             system_context: Optional system context.
+            architect_model: Override for architect model.
+            engineer_model: Override for engineer model.
+            auditor_model: Override for auditor model.
         """
         self.session_id = session_id
         self.question = question
         self.system_context = system_context
+        self.architect_model = architect_model
+        self.engineer_model = engineer_model
+        self.auditor_model = auditor_model
         self.created_at = datetime.now()
         self.updated_at = datetime.now()
         self.state: Optional[GraphState] = None
@@ -58,6 +67,9 @@ class SessionManager:
         question: str,
         system_context: Optional[SystemContext] = None,
         session_id: Optional[str] = None,
+        architect_model: Optional[str] = None,
+        engineer_model: Optional[str] = None,
+        auditor_model: Optional[str] = None,
     ) -> Session:
         """Create a new session.
 
@@ -65,6 +77,9 @@ class SessionManager:
             question: The user's system design question.
             system_context: Optional system context.
             session_id: Optional session ID (generated if not provided).
+            architect_model: Override for architect model.
+            engineer_model: Override for engineer model.
+            auditor_model: Override for auditor model.
 
         Returns:
             The new session.
@@ -79,6 +94,9 @@ class SessionManager:
                 session_id=session_id,
                 question=question,
                 system_context=system_context,
+                architect_model=architect_model,
+                engineer_model=engineer_model,
+                auditor_model=auditor_model,
             )
             self._sessions[session_id] = session
             logger.info(f"Created session {session_id}")
@@ -145,6 +163,9 @@ class SessionManager:
             question=session.question,
             system_context=session.system_context,
             session_id=session_id,
+            architect_model=session.architect_model,
+            engineer_model=session.engineer_model,
+            auditor_model=session.auditor_model,
         )
 
         session.update_state(final_state)

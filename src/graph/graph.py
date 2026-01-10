@@ -126,6 +126,9 @@ async def run_graph(
     system_context: Optional[SystemContext] = None,
     session_id: Optional[str] = None,
     max_rounds: int = 3,
+    architect_model: Optional[str] = None,
+    engineer_model: Optional[str] = None,
+    auditor_model: Optional[str] = None,
 ) -> GraphState:
     """Run the Synapse Council graph for a system design question.
 
@@ -134,6 +137,9 @@ async def run_graph(
         system_context: Optional context about the system.
         session_id: Optional session ID (generated if not provided).
         max_rounds: Maximum rounds before escalation.
+        architect_model: Override model for Architect.
+        engineer_model: Override model for Engineer.
+        auditor_model: Override model for Auditor.
 
     Returns:
         Final GraphState with the result.
@@ -149,6 +155,9 @@ async def run_graph(
         system_context=system_context,
         max_rounds=max_rounds,
         current_phase="start",
+        architect_model=architect_model,
+        engineer_model=engineer_model,
+        auditor_model=auditor_model,
     )
 
     # Create and run the graph
@@ -164,6 +173,9 @@ async def run_graph(
         "user_question": question,
         "system_context": system_context,
         "max_rounds": max_rounds,
+        "architect_model": architect_model,
+        "engineer_model": engineer_model,
+        "auditor_model": auditor_model,
     }
     state_data.update(final_state_dict)
     

@@ -250,15 +250,20 @@ class OpenAIAdapter(BaseAdapter):
 class ArchitectAdapter(OpenAIAdapter):
     """Adapter specifically for The Architect (o3)."""
 
-    def __init__(self, api_key: Optional[str] = None):
-        """Initialize the Architect adapter."""
+    def __init__(self, api_key: Optional[str] = None, model_override: Optional[str] = None):
+        """Initialize the Architect adapter.
+        
+        Args:
+            api_key: Optional API key override.
+            model_override: Optional model name override (takes precedence over config).
+        """
         settings = get_settings()
         fallbacks = [
             m.strip() for m in settings.architect_fallback_models.split(",")
             if m.strip()
         ]
         super().__init__(
-            model_name=settings.architect_model,
+            model_name=model_override or settings.architect_model,
             api_key=api_key,
             fallback_models=fallbacks,
         )
