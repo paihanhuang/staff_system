@@ -542,7 +542,8 @@ def render_result(result: dict):
         
         # Export to Markdown button
         st.markdown("---")
-        markdown_content = generate_result_markdown(adr, majority)
+        user_question = st.session_state.get("question", "")
+        markdown_content = generate_result_markdown(adr, majority, user_question)
         st.download_button(
             label="📥 Export to Markdown",
             data=markdown_content,
@@ -554,70 +555,33 @@ def render_result(result: dict):
     st.markdown('</div>', unsafe_allow_html=True)
 
 
-def generate_result_markdown(adr: dict, majority: dict) -> str:
-    """Generate a markdown file from the architecture decision record."""
+def generate_result_markdown(adr: dict, majority: dict, user_question: str = "") -> str:
+    """Generate a design document markdown for engineers to implement."""
     from datetime import datetime
     lines = []
     
     # Title and metadata
-    lines.append(f"# {adr.get('title', 'Architecture Decision Record')}")
+    lines.append(f"# {adr.get('title', 'System Design Document')}")
     lines.append("")
-    lines.append(f"**Status:** {adr.get('status', 'proposed')}")
-    lines.append(f"**Consensus Level:** {adr.get('consensus_level', 0):.0%}")
-    lines.append(f"**Rounds Taken:** {adr.get('rounds_taken', 1)}")
     lines.append(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     lines.append("")
     
-    # Decision
-    lines.append("## 📋 Decision")
-    lines.append("")
-    lines.append(adr.get("decision", "N/A"))
-    lines.append("")
+    # User Question/Request
+    if user_question:
+        lines.append("## 📋 Requirements")
+        lines.append("")
+        lines.append(user_question)
+        lines.append("")
     
-    # Rationale
-    lines.append("## 💡 Rationale")
-    lines.append("")
-    lines.append(adr.get("rationale", "N/A"))
-    lines.append("")
-    
-    # Final Proposal / Approach
+    # Architecture Overview / Approach
     final_approach = adr.get("final_approach") or majority.get("approach") or adr.get("decision", "")
     if final_approach:
-        lines.append("## 🎯 Recommended Approach")
+        lines.append("## 🎯 Architecture Overview")
         lines.append("")
         lines.append(final_approach)
         lines.append("")
     
-    # Components
-    if majority.get("components"):
-        lines.append(f"## 🧩 Components ({len(majority['components'])})")
-        lines.append("")
-        for c in majority["components"]:
-            lines.append(f"### {c.get('name', 'N/A')} ({c.get('type', 'N/A')})")
-            lines.append(f"- **Technology:** {c.get('technology', 'N/A')}")
-            lines.append(f"- **Description:** {c.get('description', 'N/A')}")
-            lines.append("")
-    
-    # Trade-offs
-    if majority.get("trade_offs"):
-        lines.append(f"## ⚖️ Trade-offs ({len(majority['trade_offs'])})")
-        lines.append("")
-        for t in majority["trade_offs"]:
-            lines.append(f"### {t.get('aspect', 'N/A')}")
-            lines.append(f"- **Choice:** {t.get('choice', 'N/A')}")
-            lines.append(f"- **Rationale:** {t.get('rationale', 'N/A')}")
-            lines.append("")
-    
-    # Implementation Recommendations
-    impl_recommendations = adr.get("implementation_recommendations", [])
-    if impl_recommendations:
-        lines.append(f"## 📝 Implementation Recommendations")
-        lines.append("")
-        for rec in impl_recommendations:
-            lines.append(f"- {rec}")
-        lines.append("")
-    
-    # Architecture Diagram
+    # Architecture Diagram (moved up for visibility)
     diagram = majority.get("mermaid_diagram") or adr.get("mermaid_diagram")
     if diagram:
         lines.append("## 📊 Architecture Diagram")
@@ -627,29 +591,48 @@ def generate_result_markdown(adr: dict, majority: dict) -> str:
         lines.append("```")
         lines.append("")
     
-    # Risks
+    # Components
+    if majority.get("components"):
+        lines.append(f"## 🧩 Components")
+        lines.append("")
+        for c in majority["components"]:
+            lines.append(f"### {c.get('name', 'N/A')}")
+            lines.append(f"- **Type:** {c.get('type', 'N/A')}")
+            lines.append(f"- **Technology:** {c.get('technology', 'N/A')}")
+            lines.append(f"- **Description:** {c.get('description', 'N/A')}")
+            lines.append("")
+    
+    # Implementation Recommendations
+    impl_recommendations = adr.get("implementation_recommendations", [])
+    if impl_recommendations:
+        lines.append(f"## 📝 Implementation Steps")
+        lines.append("")
+        for i, rec in enumerate(impl_recommendations, 1):
+            lines.append(f"{i}. {rec}")
+        lines.append("")
+    
+    # Trade-offs (useful for engineers to understand design choices)
+    if majority.get("trade_offs"):
+        lines.append(f"## ⚖️ Design Trade-offs")
+        lines.append("")
+        for t in majority["trade_offs"]:
+            lines.append(f"- **{t.get('aspect', 'N/A')}:** {t.get('choice', 'N/A')}")
+        lines.append("")
+    
+    # Risks (important for engineers to be aware of)
     majority_risks = majority.get("risks", [])
     adr_risks = adr.get("risks", [])
     all_risks = majority_risks if majority_risks else adr_risks
     if all_risks:
-        lines.append(f"## ⚠️ Identified Risks")
+        lines.append(f"## ⚠️ Known Risks & Mitigations")
         lines.append("")
         for risk in all_risks:
             if isinstance(risk, dict):
-                lines.append(f"### [{risk.get('severity', 'N/A').upper()}] {risk.get('category', 'N/A')}")
-                lines.append(f"- **Description:** {risk.get('description', 'N/A')}")
-                lines.append(f"- **Mitigation:** {risk.get('mitigation', 'N/A')}")
-                lines.append("")
+                severity = risk.get('severity', 'medium').upper()
+                lines.append(f"- **[{severity}] {risk.get('category', 'N/A')}:** {risk.get('description', 'N/A')}")
+                lines.append(f"  - *Mitigation:* {risk.get('mitigation', 'N/A')}")
             else:
                 lines.append(f"- {risk}")
-        lines.append("")
-    
-    # Minority Report
-    minority = adr.get("minority_report")
-    if minority:
-        lines.append("## 📝 Minority Report (Dissenting Opinion)")
-        lines.append("")
-        lines.append(minority)
         lines.append("")
     
     return "\n".join(lines)
