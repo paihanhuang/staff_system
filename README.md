@@ -38,13 +38,13 @@ cp .env.example .env
 ### 3. Run the Backend
 
 ```bash
-uvicorn src.api.main:app --reload --port 8000
+source .venv/bin/activate && uvicorn src.api.main:app --reload --port 8000
 ```
 
 ### 4. Run the Frontend
 
 ```bash
-streamlit run frontend/app.py
+source .venv/bin/activate && streamlit run frontend/app.py
 ```
 
 ## Usage
