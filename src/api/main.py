@@ -15,7 +15,7 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
     settings = get_settings()
-    setup_logging(level=settings.log_level)
+    setup_logging(level=settings.log_level, log_file="backend.log")
 
     # Validate API keys
     key_status = settings.validate_api_keys()
