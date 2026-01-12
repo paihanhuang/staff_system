@@ -206,29 +206,122 @@ def render_chat_message(role: str, content: str, avatar: str = None, background:
         st.markdown(content)
 
 
+@st.dialog("Full Proposal Details")
+def show_proposal_details(proposal_data):
+    """Show full proposal details in a dialog."""
+    st.markdown(f"## {proposal_data.get('title', 'Proposal')}")
+    st.markdown(f"**Summary**\n\n{proposal_data.get('summary', '')}")
+    
+    st.markdown("### Approach")
+    st.markdown(proposal_data.get('approach', ''))
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("### Components")
+        for comp in proposal_data.get('components', []):
+            st.markdown(f"- {comp}")
+            
+    with col2:
+        st.markdown("### Trade-offs")
+        for trade in proposal_data.get('trade_offs', []):
+            st.markdown(f"- {trade}")
+            
+    st.markdown("### Risks")
+    for risk in proposal_data.get('risks', []):
+        st.markdown(f"- {risk}")
+        
+    if proposal_data.get('mermaid_diagram'):
+        st.markdown("### Diagram")
+        st.markdown(f"```mermaid\n{proposal_data['mermaid_diagram']}\n```")
+
+
+@st.dialog("Critique Details")
+def show_critique_details(critique_data):
+    """Show critique details in a dialog."""
+    st.markdown(f"**Agreement Level**: {critique_data.get('agreement_level', 0):.0%}")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("### Strengths")
+        for s in critique_data.get('strengths', []):
+            st.markdown(f"- {s}")
+        
+        st.markdown("### Weaknesses")
+        for w in critique_data.get('weaknesses', []):
+            st.markdown(f"- {w}")
+
+    with col2:
+        st.markdown("### Concerns")
+        for c in critique_data.get('concerns', []):
+            st.markdown(f"- {c}")
+            
+        st.markdown("### Suggestions")
+        for s in critique_data.get('suggestions', []):
+            st.markdown(f"- {s}")
+
+
+@st.dialog("Audit Results")
+def show_audit_details(audit_data):
+    """Show audit details in a dialog."""
+    st.markdown(f"### Preferred Approach: {audit_data.get('preferred_approach', 'Unknown').title()}")
+    st.markdown(f"**Consensus Possible**: {'Yes' if audit_data.get('consensus_possible') else 'No'}")
+    
+    st.markdown("### Rationale")
+    st.markdown(audit_data.get('preference_rationale', ''))
+    
+    st.markdown("### Security Issues")
+    for issue in audit_data.get('security_issues', []):
+        st.markdown(f"- 🔴 {issue}")
+        
+    st.markdown("### Scalability Assessment")
+    st.markdown(audit_data.get('scalability_assessment', ''))
+    
+    st.markdown("### Integration Concerns")
+    for concern in audit_data.get('integration_concerns', []):
+        st.markdown(f"- ⚠️ {concern}")
+    
+    if audit_data.get('synthesis_recommendation'):
+        st.markdown("### Synthesis Recommendation")
+        st.markdown(audit_data['synthesis_recommendation'])
+
+
 def render_chat_interface(status: dict):
     """Render the conversation as a chat interface."""
     history = status.get("conversation_history", [])
     
-    # Render history
-    for msg in history:
+    for idx, msg in enumerate(history):
         role = msg.get("role", "user")
         content = msg.get("content", "")
+        metadata = msg.get("metadata", {})
         
-        # Map roles to UI presentation
         if role == "user":
             render_chat_message("user", content, avatar="👤")
         elif role == "architect":
-            render_chat_message("assistant", f"**🏗️ Architect**: {content}", avatar="🏗️")
+            with st.chat_message("assistant", avatar="🏗️"):
+                st.markdown(f"**🏗️ Architect**: {content}")
+                if "full_proposal" in metadata:
+                    if st.button("📄 View Proposal Details", key=f"arch_prop_btn_{idx}"):
+                        show_proposal_details(metadata["full_proposal"])
+                if "full_critique" in metadata:
+                    if st.button("📝 View Critique Details", key=f"arch_crit_btn_{idx}"):
+                        show_critique_details(metadata["full_critique"])
         elif role == "engineer":
-            render_chat_message("assistant", f"**⚙️ Engineer**: {content}", avatar="⚙️")
+            with st.chat_message("assistant", avatar="⚙️"):
+                st.markdown(f"**⚙️ Engineer**: {content}")
+                if "full_proposal" in metadata:
+                    if st.button("📄 View Proposal Details", key=f"eng_prop_btn_{idx}"):
+                        show_proposal_details(metadata["full_proposal"])
+                if "full_critique" in metadata:
+                    if st.button("📝 View Critique Details", key=f"eng_crit_btn_{idx}"):
+                        show_critique_details(metadata["full_critique"])
         elif role == "auditor":
-            render_chat_message("assistant", f"**🔍 Auditor**: {content}", avatar="🔍")
+            with st.chat_message("assistant", avatar="🔍"):
+                st.markdown(f"**🔍 Auditor**: {content}")
+                if "full_audit" in metadata:
+                    if st.button("📋 View Audit Details", key=f"audit_btn_{idx}"):
+                        show_audit_details(metadata["full_audit"])
         elif role == "system":
-             # System messages (like final decision) can be highlighted
-            render_chat_message("assistant", f"**🤖 System**: {content}", avatar="🤖")
-        else:
-            render_chat_message("assistant", content)
+             render_chat_message("assistant", f"**💻 System**: {content}", avatar="💻")
 
     # If running, show current phase progress as a transient message
     if status.get("is_running") and not status.get("is_complete"):

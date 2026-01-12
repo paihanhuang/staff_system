@@ -185,13 +185,19 @@ async def ideation_node(state: GraphState) -> dict:
         messages.append(Message(
             role=MessageRole.ARCHITECT,
             content=f"Proposal: {architect_proposal.title}\n{architect_proposal.summary}",
-            metadata={"confidence": architect_proposal.confidence},
+            metadata={
+                "confidence": architect_proposal.confidence,
+                "full_proposal": architect_proposal.model_dump(),
+            },
         ))
     if engineer_proposal:
         messages.append(Message(
             role=MessageRole.ENGINEER,
             content=f"Proposal: {engineer_proposal.title}\n{engineer_proposal.summary}",
-            metadata={"confidence": engineer_proposal.confidence},
+            metadata={
+                "confidence": engineer_proposal.confidence,
+                "full_proposal": engineer_proposal.model_dump(),
+            },
         ))
 
     result = {
@@ -284,12 +290,18 @@ async def cross_critique_node(state: GraphState) -> dict:
         Message(
             role=MessageRole.ARCHITECT,
             content=f"Critique of Engineer's proposal: {', '.join(architect_critique.concerns[:3])}",
-            metadata={"agreement_level": architect_critique.agreement_level},
+            metadata={
+                "agreement_level": architect_critique.agreement_level,
+                "full_critique": architect_critique.model_dump(),
+            },
         ),
         Message(
             role=MessageRole.ENGINEER,
             content=f"Critique of Architect's proposal: {', '.join(engineer_critique.concerns[:3])}",
-            metadata={"agreement_level": engineer_critique.agreement_level},
+            metadata={
+                "agreement_level": engineer_critique.agreement_level,
+                "full_critique": engineer_critique.model_dump(),
+            },
         ),
     ]
 
@@ -395,12 +407,20 @@ async def refinement_node(state: GraphState) -> dict:
         Message(
             role=MessageRole.ARCHITECT,
             content=f"Refined Proposal: {architect_refined.title}\n{architect_refined.summary}",
-            metadata={"confidence": architect_refined.confidence, "phase": "refinement"},
+            metadata={
+                "confidence": architect_refined.confidence, 
+                "phase": "refinement",
+                "full_proposal": architect_refined.model_dump(),
+            },
         ),
         Message(
             role=MessageRole.ENGINEER,
             content=f"Refined Proposal: {engineer_refined.title}\n{engineer_refined.summary}",
-            metadata={"confidence": engineer_refined.confidence, "phase": "refinement"},
+            metadata={
+                "confidence": engineer_refined.confidence, 
+                "phase": "refinement",
+                "full_proposal": engineer_refined.model_dump(),
+            },
         ),
     ]
 
@@ -489,12 +509,20 @@ async def cross_critique_2_node(state: GraphState) -> dict:
         Message(
             role=MessageRole.ARCHITECT,
             content=f"Critique 2 of Engineer's refined proposal: {', '.join(architect_critique_2.concerns[:3])}",
-            metadata={"agreement_level": architect_critique_2.agreement_level, "phase": "cross_critique_2"},
+            metadata={
+                "agreement_level": architect_critique_2.agreement_level, 
+                "phase": "cross_critique_2",
+                "full_critique": architect_critique_2.model_dump(),
+            },
         ),
         Message(
             role=MessageRole.ENGINEER,
             content=f"Critique 2 of Architect's refined proposal: {', '.join(engineer_critique_2.concerns[:3])}",
-            metadata={"agreement_level": engineer_critique_2.agreement_level, "phase": "cross_critique_2"},
+            metadata={
+                "agreement_level": engineer_critique_2.agreement_level, 
+                "phase": "cross_critique_2",
+                "full_critique": engineer_critique_2.model_dump(),
+            },
         ),
     ]
 
@@ -599,6 +627,7 @@ async def audit_node(state: GraphState) -> dict:
             metadata={
                 "consensus_possible": audit_result.consensus_possible,
                 "security_issues_count": len(audit_result.security_issues),
+                "full_audit": audit_result.model_dump(),
             },
         ),
     ]
