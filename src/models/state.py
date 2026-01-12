@@ -94,6 +94,15 @@ class ArchitectureDecisionRecord(BaseModel):
     rounds_taken: int = Field(..., description="Number of rounds to reach decision")
 
 
+class ConversationTurn(BaseModel):
+    """A complete design cycle (question + result) for conversation history."""
+    
+    turn_id: int = Field(..., description="Sequential turn number")
+    question: str = Field(..., description="The user's question for this turn")
+    adr: ArchitectureDecisionRecord = Field(..., description="The ADR for this turn")
+    timestamp: datetime = Field(default_factory=datetime.now)
+
+
 def merge_messages(
     existing: list[Message], new: list[Message]
 ) -> list[Message]:
@@ -183,6 +192,17 @@ class GraphState(BaseModel):
         default="start", description="Current phase of the workflow"
     )
     error: Optional[str] = Field(default=None, description="Error message if any")
+
+    # Follow-up conversation support
+    conversation_turns: list[ConversationTurn] = Field(
+        default_factory=list, description="History of completed design turns"
+    )
+    follow_up_context: Optional[str] = Field(
+        default=None, description="Context from previous turn for follow-up questions"
+    )
+    is_follow_up: bool = Field(
+        default=False, description="Whether this is a follow-up to a previous design"
+    )
 
     class Config:
         """Pydantic config."""

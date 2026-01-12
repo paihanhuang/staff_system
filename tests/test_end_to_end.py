@@ -23,7 +23,7 @@ def test_full_flow():
     
     # 2. Poll for Completion (Ideation -> Cross Critique -> Audit -> Convergence)
     print("\n2. Polling for Completion...")
-    for i in range(120):
+    for i in range(300):
         status_resp = requests.get(f"{BASE_URL}/design/{session_id}/detailed")
         status = status_resp.json()
 

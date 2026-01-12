@@ -154,6 +154,7 @@ async def run_graph(
     architect_model: Optional[str] = None,
     engineer_model: Optional[str] = None,
     auditor_model: Optional[str] = None,
+    follow_up_context: Optional[str] = None,
 ) -> GraphState:
     """Run the Synapse Council graph for a system design question.
 
@@ -165,13 +166,18 @@ async def run_graph(
         architect_model: Override model for Architect.
         engineer_model: Override model for Engineer.
         auditor_model: Override model for Auditor.
+        follow_up_context: Optional context from a previous design turn.
 
     Returns:
         Final GraphState with the result.
     """
     # Create unique session ID
     session_id = session_id or str(uuid.uuid4())[:8]
-    logger.info(f"[{session_id}] Starting Synapse Council for: {question[:100]}...")
+    
+    if follow_up_context:
+        logger.info(f"[{session_id}] Starting follow-up question: {question[:100]}...")
+    else:
+        logger.info(f"[{session_id}] Starting Synapse Council for: {question[:100]}...")
 
     # Create initial state
     initial_state = GraphState(
@@ -183,6 +189,8 @@ async def run_graph(
         architect_model=architect_model,
         engineer_model=engineer_model,
         auditor_model=auditor_model,
+        follow_up_context=follow_up_context,
+        is_follow_up=bool(follow_up_context),
     )
 
     # Create and run the graph
@@ -209,6 +217,113 @@ async def run_graph(
     logger.info(f"[{session_id}] Synapse Council complete - phase: {final_state.current_phase}")
 
     return final_state
+
+
+async def run_graph_stream(
+    question: str,
+    system_context: Optional[SystemContext] = None,
+    session_id: Optional[str] = None,
+    max_rounds: int = 3,
+    architect_model: Optional[str] = None,
+    engineer_model: Optional[str] = None,
+    auditor_model: Optional[str] = None,
+    follow_up_context: Optional[str] = None,
+) -> Any: # Returns AsyncIterator[GraphState]
+    """Run the Synapse Council graph streaming updates.
+
+    Args:
+        question: The user's system design question.
+        system_context: Optional context about the system.
+        session_id: Optional session ID (generated if not provided).
+        max_rounds: Maximum rounds before escalation.
+        architect_model: Override model for Architect.
+        engineer_model: Override model for Engineer.
+        auditor_model: Override model for Auditor.
+        follow_up_context: Optional context from a previous design turn.
+
+    Yields:
+        GraphState: Updated state after each step.
+    """
+    # Create unique session ID
+    session_id = session_id or str(uuid.uuid4())[:8]
+    
+    if follow_up_context:
+        logger.info(f"[{session_id}] Starting follow-up stream: {question[:100]}...")
+    else:
+        logger.info(f"[{session_id}] Starting Synapse Council stream for: {question[:100]}...")
+
+    # Create initial state
+    initial_state = GraphState(
+        session_id=session_id,
+        user_question=question,
+        system_context=system_context,
+        max_rounds=max_rounds,
+        current_phase="start",
+        architect_model=architect_model,
+        engineer_model=engineer_model,
+        auditor_model=auditor_model,
+        follow_up_context=follow_up_context,
+        is_follow_up=bool(follow_up_context),
+    )
+
+    # Create and run the graph
+    graph = create_graph()
+    
+    # We need to accumulate the state because astream yields chunks of updates, 
+    # not necessarily the full state every time depending on configuration.
+    # But StateGraph with Pydantic usually yields the full state or delta.
+    # We will assume it yields state dict updates and merge them.
+    current_state_data = {
+        "session_id": session_id,
+        "user_question": question,
+        "system_context": system_context,
+        "max_rounds": max_rounds,
+        "architect_model": architect_model,
+        "engineer_model": engineer_model,
+        "auditor_model": auditor_model,
+        "current_phase": "start",
+        "conversation_history": [],
+        "conversation_turns": initial_state.conversation_turns,
+        "follow_up_context": follow_up_context,
+         "is_follow_up": bool(follow_up_context),
+    }
+
+    async for output in graph.astream(initial_state):
+        # Output is a dict where keys are node names and values are the state update from that node
+        for node_name, state_update in output.items():
+            logger.info(f"[{session_id}] Update from node: {node_name}")
+            if isinstance(state_update, dict):
+                # Handle conversation history accumulation specifically
+                if "conversation_history" in state_update:
+                    new_history = state_update["conversation_history"]
+                    # Ensure we are extending, but check for duplicates or re-entry just in case
+                    # Since nodes return *new* messages for history, we should just extend
+                    # However, to be safe, we only append if it's a list
+                    if isinstance(new_history, list):
+                        current_state_data["conversation_history"].extend(new_history)
+                    
+                    # Remove from update dict to avoid overwriting with just the new chunk + losing old
+                    # (Wait, if we use Annotated[list, merge_messages], LangGraph handles the merge INTERNALLY
+                    # in the state it passes to the next node. But `output` from astream is usually just the 
+                    # generic return value of the node, which is the delta.
+                    # AND we are maintaining `current_state_data` manually here.
+                    # So we MUST manually merge `current_state_data`'s history logic.)
+                    
+                    # We already extended `current_state_data["conversation_history"]` above.
+                    # Now we make a copy of state_update without conversation_history to update other keys
+                    state_update_clean = {k: v for k, v in state_update.items() if k != "conversation_history"}
+                    current_state_data.update(state_update_clean)
+                else:
+                    # No history update, just update other keys
+                    current_state_data.update(state_update)
+                
+                # Yield current full state
+                try:
+                    yield GraphState(**current_state_data)
+                except Exception as e:
+                    logger.error(f"[{session_id}] Error creating state model: {e}")
+                    # Continue streaming even if validation fails transiently?
+                    pass
 
 
 

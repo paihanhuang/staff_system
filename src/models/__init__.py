@@ -11,6 +11,7 @@ from src.models.proposal import (
 )
 from src.models.state import (
     ArchitectureDecisionRecord,
+    ConversationTurn,
     GraphState,
     Interrupt,
     InterruptType,
@@ -24,6 +25,7 @@ __all__ = [
     "AuditResult",
     "Component",
     "Constraint",
+    "ConversationTurn",
     "Critique",
     "GraphState",
     "Interrupt",

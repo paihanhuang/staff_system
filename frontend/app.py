@@ -200,264 +200,69 @@ def render_sidebar():
     return context
 
 
-def render_phase_timeline(current_phase: str):
-    """Render a visual phase timeline."""
-    phases = [
-        ("Ideation", ["start", "ideation"]),
-        ("Critique 1", ["ideation_complete", "cross_critique"]),
-        ("Refinement", ["cross_critique_complete", "refinement"]),
-        ("Critique 2", ["refinement_complete", "cross_critique_2"]),
-        ("Audit", ["cross_critique_2_complete", "audit"]),
-        ("Complete", ["audit_complete", "convergence", "complete", "escalated"]),
-    ]
+def render_chat_message(role: str, content: str, avatar: str = None, background: str = None):
+    """Render a chat message."""
+    with st.chat_message(role, avatar=avatar):
+        st.markdown(content)
+
+
+def render_chat_interface(status: dict):
+    """Render the conversation as a chat interface."""
+    history = status.get("conversation_history", [])
     
-    phase_order = [
-        "start", "ideation", "ideation_complete", 
-        "cross_critique", "cross_critique_complete",
-        "refinement", "refinement_complete",
-        "cross_critique_2", "cross_critique_2_complete",
-        "audit", "audit_complete", 
-        "convergence", "complete", "escalated"
-    ]
-    
-    current_idx = phase_order.index(current_phase) if current_phase in phase_order else 0
-    
-    cols = st.columns(len(phases))
-    for i, (phase_name, phase_values) in enumerate(phases):
-        phase_idx = phase_order.index(phase_values[0])
+    # Render history
+    for msg in history:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
         
-        if current_phase in phase_values:
-            status_class = "phase-active"
-            icon = "🔄"
-        elif current_idx > phase_idx:
-            status_class = "phase-complete"
-            icon = "✅"
+        # Map roles to UI presentation
+        if role == "user":
+            render_chat_message("user", content, avatar="👤")
+        elif role == "architect":
+            render_chat_message("assistant", f"**🏗️ Architect**: {content}", avatar="🏗️")
+        elif role == "engineer":
+            render_chat_message("assistant", f"**⚙️ Engineer**: {content}", avatar="⚙️")
+        elif role == "auditor":
+            render_chat_message("assistant", f"**🔍 Auditor**: {content}", avatar="🔍")
+        elif role == "system":
+             # System messages (like final decision) can be highlighted
+            render_chat_message("assistant", f"**🤖 System**: {content}", avatar="🤖")
         else:
-            status_class = "phase-pending"
-            icon = "⏳"
-        
-        with cols[i]:
-            st.markdown(
-                f'<div class="phase-indicator {status_class}">{icon} {phase_name}</div>',
-                unsafe_allow_html=True
-            )
+            render_chat_message("assistant", content)
+
+    # If running, show current phase progress as a transient message
+    if status.get("is_running") and not status.get("is_complete"):
+        current_phase = status.get("current_phase") or "processing"
+        with st.chat_message("assistant", avatar="⚡"):
+            st.markdown(f"*Current Phase: {current_phase.replace('_', ' ').title()}...*")
+
+    # Handle interrupts (User Input)
+    if status.get("is_waiting_for_input"):
+        render_interrupt_chat(status)
 
 
-def render_agent_proposal(title: str, proposal: dict, icon: str, color: str):
-    """Render an agent's proposal card."""
-    if not proposal:
-        st.info(f"{icon} {title} is working on their proposal...")
-        return
-    
-    with st.expander(f"{icon} **{title}**: {proposal.get('title', 'Proposal')}", expanded=True):
-        # Confidence bar
-        confidence = proposal.get('confidence', 0)
-        st.progress(confidence, text=f"Confidence: {confidence:.0%}")
-        
-        # Summary
-        st.markdown(f"**Summary:** {proposal.get('summary', 'N/A')}")
-        
-        # Full Approach (always show complete)
-        approach = proposal.get('approach', '')
-        if approach:
-            st.markdown(f"**Approach:**")
-            st.markdown(approach)
-        
-        # Components (always expanded)
-        components = proposal.get('components', [])
-        if components:
-            st.markdown(f"**🧩 Components ({len(components)}):**")
-            for c in components:
-                if isinstance(c, dict):
-                    st.markdown(f"- **{c.get('name', 'N/A')}** ({c.get('type', 'N/A')}): {c.get('technology', 'N/A')} - {c.get('description', 'N/A')}")
-                else:
-                    st.markdown(f"- {c}")
-        
-        # Trade-offs (always expanded)
-        trade_offs = proposal.get('trade_offs', [])
-        if trade_offs:
-            st.markdown(f"**⚖️ Trade-offs ({len(trade_offs)}):**")
-            for t in trade_offs:
-                if isinstance(t, dict):
-                    st.markdown(f"- **{t.get('aspect', 'N/A')}**: {t.get('choice', 'N/A')} ({t.get('rationale', 'N/A')})")
-                else:
-                    st.markdown(f"- {t}")
-        
-        # Risks (if available)
-        risks = proposal.get('risks', [])
-        if risks:
-            st.markdown(f"**⚠️ Risks ({len(risks)}):**")
-            for r in risks:
-                if isinstance(r, dict):
-                    st.markdown(f"- [{r.get('severity', 'N/A').upper()}] {r.get('category', 'N/A')}: {r.get('description', 'N/A')} - Mitigation: {r.get('mitigation', 'N/A')}")
-                else:
-                    st.markdown(f"- {r}")
-        
-        # Diagram (if available)
-        diagram = proposal.get('mermaid_diagram', '')
-        if diagram:
-            st.markdown("**📊 Architecture Diagram:**")
-            st.code(diagram, language="mermaid")
-
-
-def render_progress(status: dict):
-    """Render the progress view with agent responses."""
-    current_phase = status.get("current_phase", "start")
-    is_running = status.get("is_running", False)
-    elapsed = status.get("elapsed_time")
-    
-    # Phase timeline
-    st.markdown("### 📊 Progress")
-    render_phase_timeline(current_phase)
-    
-    # Status info
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        phase_display = current_phase.replace("_", " ").title() if current_phase else "Starting..."
-        st.metric("Current Phase", phase_display)
-    with col2:
-        if elapsed:
-            st.metric("Elapsed Time", f"{elapsed:.0f}s")
-    with col3:
-        if is_running:
-            st.markdown("🔄 **Status:** Running")
-        elif status.get("is_complete"):
-            st.markdown("✅ **Status:** Complete")
-        elif status.get("is_waiting_for_input"):
-            st.markdown("⏸️ **Status:** Waiting for input")
-        else:
-            st.markdown("⏹️ **Status:** Stopped")
-    
-    st.markdown("---")
-    
-    # Agent Proposals
-    st.markdown("### 🤖 Agent Proposals")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        render_agent_proposal(
-            "The Architect", 
-            status.get("architect_proposal"),
-            "🏗️",
-            "#667eea"
-        )
-    
-    with col2:
-        render_agent_proposal(
-            "The Engineer",
-            status.get("engineer_proposal"),
-            "⚙️",
-            "#764ba2"
-        )
-    
-    # Critiques Phase 1 - show full content
-    if status.get("architect_critique_summary") or status.get("engineer_critique_summary"):
-        st.markdown("### 🔄 Cross-Critique (Round 1)")
-        col1, col2 = st.columns(2)
-        with col1:
-            if status.get("architect_critique_summary"):
-                critique_text = status['architect_critique_summary']
-                with st.expander("🏗️ **Architect's critique of Engineer**", expanded=True):
-                    st.markdown(critique_text)
-            else:
-                st.info("🏗️ Architect's critique pending...")
-        with col2:
-            if status.get("engineer_critique_summary"):
-                critique_text = status['engineer_critique_summary']
-                with st.expander("⚙️ **Engineer's critique of Architect**", expanded=True):
-                    st.markdown(critique_text)
-            else:
-                st.info("⚙️ Engineer's critique pending...")
-    
-    # Refined Proposals
-    if status.get("architect_refined_proposal") or status.get("engineer_refined_proposal"):
-        st.markdown("### ✨ Refined Proposals")
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            render_agent_proposal(
-                "The Architect (Refined)", 
-                status.get("architect_refined_proposal"),
-                "🏗️",
-                "#667eea"
-            )
-        
-        with col2:
-            render_agent_proposal(
-                "The Engineer (Refined)",
-                status.get("engineer_refined_proposal"),
-                "⚙️",
-                "#764ba2"
-            )
-    
-    # Critiques Phase 2
-    if status.get("architect_critique_2_summary") or status.get("engineer_critique_2_summary"):
-        st.markdown("### 🔄 Cross-Critique (Round 2)")
-        col1, col2 = st.columns(2)
-        with col1:
-            if status.get("architect_critique_2_summary"):
-                critique_text = status['architect_critique_2_summary']
-                with st.expander("🏗️ **Architect's critique of refined Engineer**", expanded=True):
-                    st.markdown(critique_text)
-            else:
-                st.info("🏗️ Architect's second critique pending...")
-        with col2:
-            if status.get("engineer_critique_2_summary"):
-                critique_text = status['engineer_critique_2_summary']
-                with st.expander("⚙️ **Engineer's critique of refined Architect**", expanded=True):
-                    st.markdown(critique_text)
-            else:
-                st.info("⚙️ Engineer's second critique pending...")
-    
-    # Audit
-    if status.get("audit_preferred"):
-        st.markdown("### 🔍 Audit Result")
-        preferred = status.get("audit_preferred", "").title()
-        consensus = "Yes" if status.get("audit_consensus_possible") else "No"
-        st.success(f"**Preferred approach:** {preferred} | **Consensus possible:** {consensus}")
-    
-    # Usage metrics
-    if status.get("usage_metrics"):
-        with st.expander("📊 Usage Metrics"):
-            metrics = status["usage_metrics"]
-            st.json(metrics)
-
-
-def render_interrupt(status: dict):
-    """Render an interrupt requiring user input."""
-    if not status.get("is_waiting_for_input"):
-        return
-    
-    st.markdown("---")
-    st.markdown('<div class="interrupt-box">', unsafe_allow_html=True)
-
+def render_interrupt_chat(status: dict):
+    """Render an interrupt requiring user input within the chat."""
     source = status.get("interrupt_source") or "agent"
     question = status.get("interrupt_question") or "Please provide more information."
-
-    st.markdown(f"### 🤔 The {source.title()} needs clarification:")
-    st.markdown(f"**{question}**")
-
-    response = st.text_area(
-        "Your response:",
-        key="clarification_response",
-        placeholder="Provide your answer here...",
-    )
-
-    if st.button("Submit Response", type="primary"):
-        if response:
-            with st.spinner("Processing your response..."):
-                result = make_request(
-                    "POST",
-                    f"/api/design/{st.session_state.session_id}/respond",
-                    {"response": response},
-                )
-                st.session_state.status = result
-                st.session_state.auto_refresh = True
-                st.rerun()
-        else:
-            st.error("Please provide a response.")
-
-    st.markdown('</div>', unsafe_allow_html=True)
+    
+    with st.chat_message("assistant", avatar="❓"):
+        st.markdown(f"**{source.title()} needs clarification:**")
+        st.markdown(question)
+        
+    with st.form("clarification_form"):
+        response = st.text_area("Your response:", key="clarification_response")
+        if st.form_submit_button("Submit Response", type="primary"):
+            if response:
+                with st.spinner("Processing..."):
+                     result = make_request(
+                        "POST",
+                        f"/api/design/{st.session_state.session_id}/respond",
+                        {"response": response},
+                    )
+                     st.session_state.status = result
+                     st.session_state.auto_refresh = True
+                     st.rerun()
 
 
 def render_result(result: dict):
@@ -743,7 +548,7 @@ def main():
                         st.error(f"Failed to start design review: {result.get('error')}")
 
     else:
-        # Active session - show progress
+        # Active session - show chat interface
         
         # Display the persistent question
         if st.session_state.question:
@@ -752,64 +557,82 @@ def main():
         status = st.session_state.status
         
         if status:
-            # Render progress view
-            render_progress(status)
+            # Render the continuous chat interface
+            render_chat_interface(status)
             
-            # Handle interrupt
-            if status.get("is_waiting_for_input"):
-                render_interrupt(status)
-                st.session_state.auto_refresh = False
-            
-            # Show result if complete
-            elif status.get("is_complete"):
+            # Show result/actions ONLY if complete
+            if status.get("is_complete"):
                 st.session_state.auto_refresh = False
                 
-                # Fetch full result
+                # Fetch full result if needed
                 if not st.session_state.result:
-                    result = make_request(
-                        "GET",
-                        f"/api/design/{st.session_state.session_id}/result",
-                    )
-                    st.session_state.result = result
+                    result_data = make_request("GET", f"/api/design/{st.session_state.session_id}/result")
+                    st.session_state.result = result_data
+                
+                # Render the final result explicitly at the bottom if available
+                if st.session_state.result:
+                     render_result(st.session_state.result)
 
-                render_result(st.session_state.result)
-
-                # Reset button
+                # Follow-up question section at the very bottom
                 st.markdown("---")
-                if st.button("🔄 Start New Design"):
-                    st.session_state.session_id = None
-                    st.session_state.status = None
-                    st.session_state.result = None
-                    st.session_state.auto_refresh = False
-                    st.rerun()
-            
+                st.markdown("### 💬 Ask a Follow-up Question")
+                
+                with st.form("follow_up_form"):
+                    follow_up = st.text_area(
+                        "Your follow-up question:",
+                        key="follow_up_question_chat",
+                        placeholder="e.g., 'How should we handle database migrations?'",
+                        height=100,
+                    )
+                    
+                    submitted = st.form_submit_button("🔄 Continue Design", type="primary")
+
+                    if submitted:
+                        if follow_up:
+                            with st.spinner("Starting follow-up..."):
+                                result = make_request(
+                                    "POST",
+                                    f"/api/design/{st.session_state.session_id}/follow-up",
+                                    {"question": follow_up},
+                                )
+                                if not result.get("error"):
+                                    st.session_state.status = result
+                                    st.session_state.result = None
+                                    st.session_state.auto_refresh = True
+                                    st.rerun()
+                                else:
+                                    st.error(f"Failed to start follow-up: {result.get('error')}")
+                        else:
+                            st.warning("Please enter a follow-up question.")
+                
+                col_reset, _ = st.columns([1, 4])
+                with col_reset:
+                    if st.button("🆕 Start New Design"):
+                         st.session_state.session_id = None
+                         st.session_state.status = None
+                         st.session_state.result = None
+                         st.session_state.auto_refresh = False
+                         st.rerun()
+
             else:
                 # Still running - show refresh controls
                 col1, col2 = st.columns([1, 4])
                 with col1:
                     if st.button("🔄 Refresh Now"):
-                        status = make_request(
-                            "GET",
-                            f"/api/design/{st.session_state.session_id}/detailed",
-                        )
-                        st.session_state.status = status
-                        st.rerun()
+                         status = make_request("GET", f"/api/design/{st.session_state.session_id}/detailed")
+                         st.session_state.status = status
+                         st.rerun()
                 
                 with col2:
                     auto = st.checkbox("Auto-refresh every second", value=st.session_state.auto_refresh)
                     st.session_state.auto_refresh = auto
                 
-                # Auto-refresh logic
                 if st.session_state.auto_refresh:
-                    # Update status before sleeping/rerunning
-                    status = make_request("GET", f"/api/design/{st.session_state.session_id}/detailed")
-                    st.session_state.status = status
-                    
-                    # Render console before sleep/rerun so it's visible during the wait
-                    render_system_console()
-                    
-                    time.sleep(POLL_INTERVAL)
-                    st.rerun()
+                     status = make_request("GET", f"/api/design/{st.session_state.session_id}/detailed")
+                     st.session_state.status = status
+                     # render_system_console() removed to prevent duplication
+                     time.sleep(POLL_INTERVAL)
+                     st.rerun()
 
         # Stop session button
         st.markdown("---")

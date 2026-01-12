@@ -10,3 +10,4 @@ __pycache__/
 brain/
 *.webp
 *.png
+data/

@@ -61,6 +61,12 @@ class DesignRequest(BaseModel):
     auditor_model: Optional[str] = Field(default=None, description="Override auditor model")
 
 
+class FollowUpRequest(BaseModel):
+    """Request to continue a session with a follow-up question."""
+    
+    question: str = Field(..., description="The follow-up question")
+
+
 class LogResponse(BaseModel):
     """Response containing server logs."""
     logs: list[str] = Field(..., description="List of log lines")
@@ -161,6 +167,9 @@ class DetailedSessionResponse(BaseModel):
     error: Optional[str] = None
     usage_metrics: Optional[dict] = None
     elapsed_time: Optional[float] = None
+    
+    # Chat history
+    conversation_history: list[dict] = Field(default_factory=list, description="Full conversation history")
 
 
 
@@ -297,6 +306,7 @@ def _session_to_detailed_response(session, is_running: bool = False) -> Detailed
         error=state.error if state else None,
         usage_metrics=getattr(state, 'usage_metrics', None) if state else None,
         elapsed_time=elapsed_time,
+        conversation_history=[m.model_dump() for m in state.conversation_history] if state else [],
     )
 
 
@@ -497,6 +507,65 @@ async def delete_session(session_id: str):
 async def list_sessions():
     """List all active sessions."""
     return {"sessions": session_manager.list_sessions()}
+
+
+@router.get("/sessions/all")
+async def list_all_sessions():
+    """List all sessions including those in storage."""
+    return {"sessions": await session_manager.list_all_sessions()}
+
+
+@router.post("/design/{session_id}/follow-up", response_model=DetailedSessionResponse)
+async def follow_up_question(
+    session_id: str,
+    request: FollowUpRequest,
+    background_tasks: BackgroundTasks,
+) -> DetailedSessionResponse:
+    """Continue a completed session with a follow-up question.
+    
+    The session runs in the background. Poll /design/{session_id}/detailed
+    for progress updates.
+    """
+    # Validate input
+    is_valid, error = validate_question(request.question)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=error)
+
+    try:
+        # Get existing session
+        session = await session_manager.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+        
+        if not session.is_complete:
+            raise HTTPException(status_code=400, detail="Session is still in progress")
+        
+        # Update session for follow-up
+        session.question = request.question
+        session.is_complete = False
+        
+        # Start background task for follow-up
+        async def run_follow_up():
+            try:
+                _running_sessions.add(session_id)
+                await session_manager.continue_session(session_id, request.question)
+            except Exception as e:
+                logger.error(f"Follow-up session {session_id} failed: {e}")
+                session = await session_manager.get_session(session_id)
+                if session and session.state:
+                    session.state.error = str(e)
+            finally:
+                _running_sessions.discard(session_id)
+        
+        background_tasks.add_task(run_follow_up)
+        
+        return _session_to_detailed_response(session, is_running=True)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error starting follow-up: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # WebSocket for real-time streaming
